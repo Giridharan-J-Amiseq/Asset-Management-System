@@ -1,7 +1,6 @@
 const NAV_LINKS = [
     ["dashboard.html", "dashboard", "Dashboard", ["Admin", "IT Manager"]],
     ["assets.html", "assets", "Assets", ["Admin", "IT Manager", "Viewer"]],
-    ["add_asset.html", "add_asset", "Add Asset", ["Admin", "IT Manager"]],
     ["transactions.html", "transactions", "Transactions", ["Admin", "IT Manager"]],
     ["assign.html", "assign", "Assign Asset", ["Admin", "IT Manager"]],
     ["transfer.html", "transfer", "Transfer Asset", ["Admin", "IT Manager"]],

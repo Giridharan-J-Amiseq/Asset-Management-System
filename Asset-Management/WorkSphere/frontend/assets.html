@@ -15,9 +15,9 @@
                     <h1 class="h3">Assets</h1>
                     <p class="text-muted">Manage your organization's assets</p>
                 </div>
-                <a href="add_asset.html" class="btn btn-primary">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssetModal">
                     <i class="bi bi-plus-circle"></i> Add Asset
-                </a>
+                </button>
             </div>
 
             <!-- Filters -->
@@ -87,6 +87,154 @@
         </div>
     </div>
 
+    <!-- Add Asset Modal -->
+    <div class="modal fade" id="addAssetModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Asset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addAssetForm" class="ws-form">
+                        <!-- Asset Information Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Asset Information</h6>
+                            
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Asset Name *</label>
+                                    <input type="text" class="form-control" name="asset_name" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Asset Type *</label>
+                                    <select class="form-select" name="asset_type" required id="assetTypeSelect">
+                                        <option value="">Select Asset Type</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Serial Number *</label>
+                                    <input type="text" class="form-control" name="serial_number" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Category *</label>
+                                    <select class="form-select" name="category" required>
+                                        <option value="">Select Category</option>
+                                        <option value="IT">IT</option>
+                                        <option value="Non-IT">Non-IT</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Model</label>
+                                    <input type="text" class="form-control" name="model">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Brand</label>
+                                    <input type="text" class="form-control" name="brand">
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Specifications</label>
+                                    <textarea class="form-control" name="specifications" rows="2"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Purchase Information Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Purchase Information</h6>
+                            
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Purchase Date</label>
+                                    <input type="date" class="form-control" name="purchase_date">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Purchase Cost</label>
+                                    <input type="number" class="form-control" name="purchase_cost" step="0.01">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Vendor Name</label>
+                                    <input type="text" class="form-control" name="vendor_name">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Invoice Number</label>
+                                    <input type="text" class="form-control" name="invoice_number">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Warranty Information Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Warranty Information</h6>
+                            
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Warranty Start Date</label>
+                                    <input type="date" class="form-control" name="warranty_start_date">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Warranty Expiry (Years)</label>
+                                    <input type="number" class="form-control" name="warranty_expiry" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Status & Organization Section -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Status & Organization</h6>
+                            
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Asset Status *</label>
+                                    <select class="form-select" name="asset_status" required>
+                                        <option value="">Select Status</option>
+                                        <option value="Available" selected>Available</option>
+                                        <option value="Assigned">Assigned</option>
+                                        <option value="In Repair">In Repair</option>
+                                        <option value="Retired">Retired</option>
+                                        <option value="Lost">Lost</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Condition Status *</label>
+                                    <select class="form-select" name="condition_status" required>
+                                        <option value="">Select Condition</option>
+                                        <option value="New" selected>New</option>
+                                        <option value="Good">Good</option>
+                                        <option value="Damaged">Damaged</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Location *</label>
+                                    <select class="form-select" name="location" required id="locationSelect">
+                                        <option value="">Select Location</option>
+                                        <option value="Chennai" selected>Chennai</option>
+                                        <option value="Pune">Pune</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Department *</label>
+                                    <select class="form-select" name="department" required>
+                                        <option value="">Select Department</option>
+                                        <option value="IA">Intelligent Automation (IA)</option>
+                                        <option value="Cyber Security">Cyber Security</option>
+                                        <option value="IT Administration">IT Administration</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="submitAssetBtn">
+                        <i class="bi bi-plus-circle"></i> Create Asset
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Asset Detail Modal -->
     <div class="modal fade" id="assetModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
@@ -96,6 +244,21 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body" id="assetModalBody">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="modal fade" id="qrModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">QR Code</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center" id="qrModalBody">
                     <!-- Loaded dynamically -->
                 </div>
             </div>
@@ -154,14 +317,11 @@
         }
 
         function viewQRModal(imageUrl, qrValue) {
-            const modal = new bootstrap.Modal(document.getElementById("assetModal"));
-            document.getElementById("assetModalBody").innerHTML = `
-                <div class="text-center">
-                    <img src="${imageUrl}" alt="QR Code" class="img-fluid mb-3" style="max-width: 300px;">
-                    <p><strong>Value:</strong> ${qrValue}</p>
-                </div>
+            document.getElementById("qrModalBody").innerHTML = `
+                <img src="${imageUrl}" alt="QR Code" class="img-fluid mb-3" style="max-width: 300px;">
+                <p><strong>Asset ID:</strong> ${qrValue}</p>
             `;
-            modal.show();
+            new bootstrap.Modal(document.getElementById("qrModal")).show();
         }
 
         function renderActions(row) {
@@ -183,14 +343,61 @@
             document.getElementById("nextPage").onclick = (e) => { e.preventDefault(); currentPage++; loadAssets(); };
         }
 
-        document.addEventListener("DOMContentLoaded", function() {
+        document.addEventListener("DOMContentLoaded", async function() {
             Auth.requireLogin();
+            
+            // Load dropdown options
+            try {
+                const dropdowns = await API.get("/assets/meta/dropdowns");
+                const assetTypeSelect = document.getElementById("assetTypeSelect");
+                dropdowns.asset_types.forEach(type => {
+                    const option = document.createElement("option");
+                    option.value = type;
+                    option.textContent = type;
+                    assetTypeSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error("Error loading dropdowns:", error);
+            }
+            
             loadAssets();
             
             document.getElementById("searchInput")?.addEventListener("input", () => { currentPage = 1; loadAssets(); });
             document.getElementById("statusFilter")?.addEventListener("change", () => { currentPage = 1; loadAssets(); });
             document.getElementById("typeFilter")?.addEventListener("change", () => { currentPage = 1; loadAssets(); });
             document.getElementById("departmentFilter")?.addEventListener("change", () => { currentPage = 1; loadAssets(); });
+
+            // Handle add asset form submission
+            document.getElementById("submitAssetBtn").addEventListener("click", async function(e) {
+                e.preventDefault();
+                
+                const form = document.getElementById("addAssetForm");
+                const formData = new FormData(form);
+                const payload = Object.fromEntries(formData);
+                
+                // Convert to proper types
+                if (payload.purchase_cost) payload.purchase_cost = parseFloat(payload.purchase_cost);
+                if (payload.warranty_expiry) payload.warranty_expiry = parseInt(payload.warranty_expiry);
+                
+                try {
+                    this.disabled = true;
+                    this.textContent = "Creating...";
+                    
+                    const response = await API.post("/assets", payload);
+                    showToast(`Asset created successfully! (ID: ${response.custom_asset_id})`, "success");
+                    
+                    // Close modal and reload assets
+                    bootstrap.Modal.getInstance(document.getElementById("addAssetModal")).hide();
+                    form.reset();
+                    currentPage = 1;
+                    loadAssets();
+                } catch (error) {
+                    showToast(error.message || "Error creating asset", "error");
+                } finally {
+                    this.disabled = false;
+                    this.textContent = "<i class='bi bi-plus-circle'></i> Create Asset";
+                }
+            });
 
             document.querySelector(".ws-page-wrapper").style.display = "block";
         });
