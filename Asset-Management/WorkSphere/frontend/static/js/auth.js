@@ -37,6 +37,33 @@ const Auth = {
         return user ? roles.includes(user.role) : false;
     },
 
+    roleHomePage() {
+        const role = this.getUser()?.role;
+        if (role === "Viewer") {
+            return "assets.html";
+        }
+        return "dashboard.html";
+    },
+
+    canAccessPage(pageKey) {
+        const user = this.getUser();
+        if (!user) return false;
+        const access = {
+            dashboard: ["Admin", "IT Manager"],
+            assets: ["Admin", "IT Manager", "Viewer"],
+            add_asset: ["Admin", "IT Manager"],
+            asset_detail: ["Admin", "IT Manager", "Viewer"],
+            transactions: ["Admin", "IT Manager"],
+            assign: ["Admin", "IT Manager"],
+            transfer: ["Admin", "IT Manager"],
+            maintenance: ["Admin", "IT Manager"],
+            users: ["Admin"],
+            qr_print: ["Admin", "IT Manager"],
+        };
+        const allowedRoles = access[pageKey] || [];
+        return allowedRoles.includes(user.role);
+    },
+
     initProtectedPage() {
         this.requireAuth();
         const user = this.getUser();

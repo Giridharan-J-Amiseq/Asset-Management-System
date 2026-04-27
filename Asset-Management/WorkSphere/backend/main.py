@@ -22,10 +22,17 @@ app.add_middleware(
 static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/app", StaticFiles(directory=frontend_dir, html=True), name="app")
+
 
 @app.get("/")
 def root():
-    return {"message": "WorkSphere API is running"}
+    return {
+        "message": "WorkSphere API is running",
+        "frontend": "/app/login.html",
+        "docs": "/docs",
+    }
 
 
 @app.post("/auth/login", response_model=TokenResponse)

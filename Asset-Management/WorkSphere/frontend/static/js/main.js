@@ -1,72 +1,58 @@
-function shellTemplate(pageTitle, pageKey, content) {
-    const user = Auth.getUser() || {};
-    const links = [
-        ["dashboard.html", "dashboard", "Dashboard"],
-        ["assets.html", "assets", "Assets"],
-        ["add_asset.html", "add_asset", "Add Asset", ["Admin", "IT Manager"]],
-        ["transactions.html", "transactions", "Transactions"],
-        ["assign.html", "assign", "Assign Asset", ["Admin", "IT Manager"]],
-        ["transfer.html", "transfer", "Transfer Asset", ["Admin", "IT Manager"]],
-        ["maintenance.html", "maintenance", "Maintenance"],
-        ["users.html", "users", "Users", ["Admin"]],
-        ["qr_print.html", "qr_print", "QR Print", ["Admin", "IT Manager"]]
-    ];
+const NAV_LINKS = [
+    ["dashboard.html", "dashboard", "Dashboard", ["Admin", "IT Manager"]],
+    ["assets.html", "assets", "Assets", ["Admin", "IT Manager", "Viewer"]],
+    ["add_asset.html", "add_asset", "Add Asset", ["Admin", "IT Manager"]],
+    ["transactions.html", "transactions", "Transactions", ["Admin", "IT Manager"]],
+    ["assign.html", "assign", "Assign Asset", ["Admin", "IT Manager"]],
+    ["transfer.html", "transfer", "Transfer Asset", ["Admin", "IT Manager"]],
+    ["maintenance.html", "maintenance", "Maintenance", ["Admin", "IT Manager"]],
+    ["users.html", "users", "Users", ["Admin"]],
+    ["qr_print.html", "qr_print", "QR Print", ["Admin", "IT Manager"]],
+];
 
-    document.body.className = "ws-body";
-    document.body.innerHTML = `
-        <div class="ws-layout">
-            <aside class="ws-sidebar">
-                <div class="ws-brand mb-4">WorkSphere</div>
-                <div class="small text-muted-custom mb-3">Asset Management System</div>
-                <nav>
-                    ${links
-                        .filter(([, , , roles]) => !roles || roles.includes(user.role))
-                        .map(([href, key, label]) => `
-                            <a class="ws-nav-link ${pageKey === key ? "active" : ""}" href="${href}">${label}</a>
-                        `)
-                        .join("")}
-                </nav>
-            </aside>
-            <main class="ws-main">
-                <div class="ws-topbar">
-                    <div>
-                        <div class="ws-title">${pageTitle}</div>
-                        <div class="ws-subtitle">Track, assign, transfer, and maintain assets with confidence.</div>
-                    </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="text-end">
-                            <div data-user-name>${user.user_name || "User"}</div>
-                            <div class="text-muted-custom small" data-user-role>${user.role || ""}</div>
-                        </div>
-                        <button class="btn btn-outline-light btn-sm" data-logout>Logout</button>
-                    </div>
-                </div>
-                ${content}
-            </main>
-        </div>
-    `;
-    Auth.initProtectedPage();
+function showToast(message, type = "success") {
+    let stack = document.getElementById("ws-toast-stack");
+    if (!stack) {
+        stack = document.createElement("div");
+        stack.id = "ws-toast-stack";
+        stack.className = "ws-toast-stack";
+        document.body.appendChild(stack);
+    }
+    const toneClass = type === "error" ? "danger" : type;
+    const item = document.createElement("div");
+    item.className = `alert alert-${toneClass} ws-toast mb-2`;
+    item.textContent = message;
+    stack.appendChild(item);
+    setTimeout(() => item.remove(), 3500);
+}
+
+function setFormBusy(form, isBusy, busyText = "Please wait...") {
+    const button = form.querySelector("button[type='submit'], button:not([type])");
+    if (!button) return;
+    if (!button.dataset.defaultText) {
+        button.dataset.defaultText = button.textContent;
+    }
+    button.disabled = isBusy;
+    button.textContent = isBusy ? busyText : button.dataset.defaultText;
 }
 
 function statusBadge(status) {
     const map = {
-        Available: "bg-success-subtle text-success",
-        Assigned: "bg-primary-subtle text-primary",
-        "In Repair": "bg-warning-subtle text-warning",
-        Retired: "bg-secondary-subtle text-secondary",
-        Lost: "bg-danger-subtle text-danger",
-        Open: "bg-danger-subtle text-danger",
-        "In Progress": "bg-warning-subtle text-warning",
-        Closed: "bg-success-subtle text-success"
+        Available: "ws-badge ws-badge-success",
+        Assigned: "ws-badge ws-badge-info",
+        "In Repair": "ws-badge ws-badge-warning",
+        Retired: "ws-badge ws-badge-neutral",
+        Lost: "ws-badge ws-badge-danger",
+        Open: "ws-badge ws-badge-danger",
+        "In Progress": "ws-badge ws-badge-warning",
+        Closed: "ws-badge ws-badge-success",
     };
-    return `<span class="badge ws-badge ${map[status] || "bg-secondary-subtle text-secondary"}">${status}</span>`;
+    return `<span class="${map[status] || "ws-badge ws-badge-neutral"}">${status}</span>`;
 }
 
 function renderTable(elementId, columns, rows) {
     const container = document.getElementById(elementId);
-    if (!container) {
-        return;
-    }
+    if (!container) return;
     if (!rows.length) {
         container.innerHTML = `<div class="ws-empty">No records found.</div>`;
         return;
@@ -91,20 +77,61 @@ function renderTable(elementId, columns, rows) {
     `;
 }
 
+function shellTemplate(pageTitle, pageKey, content) {
+    const user = Auth.getUser() || {};
+    const links = NAV_LINKS.filter(([, , , roles]) => roles.includes(user.role));
+    document.body.className = "ws-body";
+    document.body.innerHTML = `
+        <div class="ws-layout">
+            <aside class="ws-sidebar">
+                <div class="ws-brand-block">
+                    <div class="ws-logo-square">AT</div>
+                    <div>
+                        <div class="ws-brand">AssetTrack</div>
+                        <div class="ws-brand-sub">Enterprise</div>
+                    </div>
+                </div>
+                <div class="ws-nav-caption">Navigation</div>
+                <nav>
+                    ${links.map(([href, key, label]) => `<a class="ws-nav-link ${pageKey === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}
+                </nav>
+            </aside>
+            <main class="ws-main">
+                <div class="ws-topbar">
+                    <div>
+                        <div class="ws-title">${pageTitle}</div>
+                        <div class="ws-subtitle">Enterprise Asset Management Dashboard</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="ws-online-pill"><span class="ws-online-dot"></span> SYSTEM ONLINE</div>
+                        <div class="text-end">
+                            <div data-user-name>${user.user_name || "User"}</div>
+                            <div class="text-muted-custom small" data-user-role>${user.role || ""}</div>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-sm" data-logout>Logout</button>
+                    </div>
+                </div>
+                ${content}
+            </main>
+        </div>
+    `;
+    Auth.initProtectedPage();
+}
+
 async function initDashboardPage() {
     shellTemplate("Dashboard", "dashboard", `
         <div class="ws-section-grid mb-4" id="dashboard-stats"></div>
         <div class="row g-4">
-            <div class="col-lg-6">
+            <div class="col-lg-7">
                 <div class="ws-table-card">
-                    <h5 class="mb-3">Warranty Alerts</h5>
-                    <div id="warranty-table"></div>
-                </div>
-            </div>
-            <div class="col-lg-6">
-                <div class="ws-table-card mb-4">
                     <h5 class="mb-3">Recent Transactions</h5>
                     <div id="transactions-table"></div>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="ws-table-card mb-4">
+                    <h5 class="mb-3">Warranty Alerts</h5>
+                    <div id="warranty-table"></div>
                 </div>
                 <div class="ws-table-card">
                     <h5 class="mb-3">Recent Maintenance</h5>
@@ -117,47 +144,67 @@ async function initDashboardPage() {
     const data = await API.get("/dashboard");
     const stats = [
         ["Total Assets", data.counts.total_assets],
-        ["Available", data.counts.available],
         ["Assigned", data.counts.assigned],
         ["In Repair", data.counts.in_repair],
-        ["Retired", data.counts.retired]
+        ["Retired", data.counts.retired],
     ];
     document.getElementById("dashboard-stats").innerHTML = stats
-        .map(([label, value]) => `
-            <div class="ws-card">
-                <div class="ws-stat-value">${value}</div>
-                <div class="ws-stat-label">${label}</div>
-            </div>
-        `)
+        .map(([label, value]) => `<div class="ws-stat-card"><div class="ws-stat-label">${label}</div><div class="ws-stat-value">${value}</div></div>`)
         .join("");
-
-    renderTable("warranty-table", [
-        { key: "asset_name", label: "Asset" },
-        { key: "serial_number", label: "Serial No" },
-        { key: "warranty_end_date", label: "Warranty Ends" }
-    ], data.warranty_alerts);
 
     renderTable("transactions-table", [
         { key: "asset_name", label: "Asset" },
         { key: "transaction_type", label: "Type" },
-        { key: "to_assignee_name", label: "To" }
+        { key: "to_assignee_name", label: "To" },
     ], data.recent_transactions);
+
+    renderTable("warranty-table", [
+        { key: "asset_name", label: "Asset" },
+        { key: "warranty_end_date", label: "Expires" },
+    ], data.warranty_alerts);
 
     renderTable("maintenance-table", [
         { key: "asset_name", label: "Asset" },
-        { key: "issue_type", label: "Issue" },
-        { key: "maintenance_status", label: "Status", render: (row) => statusBadge(row.maintenance_status) }
+        { key: "maintenance_status", label: "Status", render: (row) => statusBadge(row.maintenance_status) },
     ], data.recent_maintenance);
+}
+
+function renderAssetCards(elementId, items) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+    if (!items.length) {
+        container.innerHTML = `<div class="ws-empty">No assets found.</div>`;
+        return;
+    }
+    container.innerHTML = `<div class="ws-assets-grid">${items.map((asset) => `
+        <article class="ws-asset-card">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                    <h5 class="mb-1">${asset.asset_name}</h5>
+                    <div class="text-muted-custom small">${asset.serial_number}</div>
+                </div>
+                <a class="btn btn-sm btn-outline-secondary" href="asset_detail.html?id=${asset.asset_id}">View</a>
+            </div>
+            <div class="d-flex gap-2 mb-3">
+                ${statusBadge(asset.asset_status)}
+                <span class="ws-chip">${asset.asset_type}</span>
+            </div>
+            <div class="ws-asset-meta">
+                <div><span>Brand</span><strong>${asset.brand || "-"}</strong></div>
+                <div><span>Location</span><strong>${asset.location || "-"}</strong></div>
+            </div>
+        </article>
+    `).join("")}</div>`;
 }
 
 async function initAssetsPage() {
     shellTemplate("Assets", "assets", `
-        <div class="ws-table-card">
-            <div class="row g-3 mb-3">
-                <div class="col-md-4"><input class="form-control" id="asset-search" placeholder="Search by asset, serial, brand"></div>
+        <div class="ws-card mb-4">
+            <div class="row g-3">
+                <div class="col-md-4"><input class="form-control" id="asset-search" placeholder="Search assets"></div>
                 <div class="col-md-3">
                     <select class="form-select" id="status-filter">
-                        <option value="">All Statuses</option>
+                        <option value="">All Status</option>
                         <option>Available</option>
                         <option>Assigned</option>
                         <option>In Repair</option>
@@ -168,44 +215,80 @@ async function initAssetsPage() {
                 <div class="col-md-3">
                     <select class="form-select" id="type-filter">
                         <option value="">All Types</option>
-                        <option>Laptop</option>
-                        <option>Desktop</option>
-                        <option>Server</option>
-                        <option>Furniture</option>
-                        <option>Printer</option>
-                        <option>Phone</option>
-                        <option>Monitor</option>
-                        <option>UPS</option>
-                        <option>Other</option>
+                        <option>Laptop</option><option>Desktop</option><option>Server</option><option>Furniture</option>
+                        <option>Printer</option><option>Phone</option><option>Monitor</option><option>UPS</option><option>Other</option>
                     </select>
                 </div>
-                <div class="col-md-2"><button class="btn btn-primary w-100" id="filter-btn">Filter</button></div>
+                <div class="col-md-2"><button class="btn btn-primary w-100" id="filter-btn">Apply</button></div>
             </div>
-            <div id="assets-table"></div>
         </div>
+        <div id="assets-grid"></div>
+        <div class="ws-pagination mt-3" id="assets-pagination"></div>
     `);
 
-    async function loadAssets() {
+    const state = { page: 1, pageSize: 8, total: 0 };
+
+    const loadAssets = async () => {
         const params = new URLSearchParams();
+        params.set("page", String(state.page));
+        params.set("page_size", String(state.pageSize));
         const search = document.getElementById("asset-search").value.trim();
         const status = document.getElementById("status-filter").value;
         const type = document.getElementById("type-filter").value;
         if (search) params.set("search", search);
         if (status) params.set("status_filter", status);
         if (type) params.set("type_filter", type);
-        const data = await API.get(`/assets?${params.toString()}`);
-        renderTable("assets-table", [
-            { key: "asset_name", label: "Asset" },
-            { key: "asset_type", label: "Type" },
-            { key: "serial_number", label: "Serial No" },
-            { key: "department", label: "Department" },
-            { key: "asset_status", label: "Status", render: (row) => statusBadge(row.asset_status) },
-            { key: "asset_id", label: "Action", render: (row) => `<a class="btn btn-sm btn-outline-light" href="asset_detail.html?id=${row.asset_id}">View</a>` }
-        ], data.items);
-    }
 
-    document.getElementById("filter-btn").addEventListener("click", loadAssets);
-    loadAssets();
+        const data = await API.get(`/assets?${params.toString()}`);
+        state.total = data.total;
+        renderAssetCards("assets-grid", data.items);
+
+        const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
+        const from = state.total === 0 ? 0 : (state.page - 1) * state.pageSize + 1;
+        const to = Math.min(state.total, state.page * state.pageSize);
+        const pager = document.getElementById("assets-pagination");
+        pager.innerHTML = `
+            <div class="small text-muted-custom">Showing ${from}-${to} of ${state.total}</div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" id="assets-prev" ${state.page <= 1 ? "disabled" : ""}>Previous</button>
+                <button class="btn btn-sm btn-outline-secondary" id="assets-next" ${state.page >= totalPages ? "disabled" : ""}>Next</button>
+            </div>
+        `;
+        document.getElementById("assets-prev")?.addEventListener("click", async () => {
+            if (state.page > 1) {
+                state.page -= 1;
+                await loadAssets();
+            }
+        });
+        document.getElementById("assets-next")?.addEventListener("click", async () => {
+            if (state.page < totalPages) {
+                state.page += 1;
+                await loadAssets();
+            }
+        });
+    };
+
+    document.getElementById("filter-btn").addEventListener("click", async () => {
+        state.page = 1;
+        try {
+            await loadAssets();
+        } catch (error) {
+            showToast(error.message, "error");
+        }
+    });
+    document.getElementById("asset-search").addEventListener("keydown", async (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            state.page = 1;
+            try {
+                await loadAssets();
+            } catch (error) {
+                showToast(error.message, "error");
+            }
+        }
+    });
+
+    await loadAssets();
 }
 
 async function initAddAssetPage() {
@@ -220,29 +303,19 @@ async function initAddAssetPage() {
                         <option>Printer</option><option>Phone</option><option>Monitor</option><option>UPS</option><option>Other</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <select required name="category" class="form-select">
-                        <option value="">Category</option>
-                        <option>IT</option>
-                        <option>Non-IT</option>
-                    </select>
-                </div>
+                <div class="col-md-3"><select required name="category" class="form-select"><option value="">Category</option><option>IT</option><option>Non-IT</option></select></div>
                 <div class="col-md-6"><input required name="serial_number" class="form-control" placeholder="Serial Number"></div>
                 <div class="col-md-3"><input name="brand" class="form-control" placeholder="Brand"></div>
                 <div class="col-md-3"><input name="model" class="form-control" placeholder="Model"></div>
                 <div class="col-md-4"><input name="department" class="form-control" placeholder="Department"></div>
                 <div class="col-md-4"><input name="location" class="form-control" placeholder="Location"></div>
-                <div class="col-md-4">
-                    <select name="condition_status" class="form-select">
-                        <option>New</option><option>Good</option><option>Damaged</option>
-                    </select>
-                </div>
+                <div class="col-md-4"><select name="condition_status" class="form-select"><option>New</option><option>Good</option><option>Damaged</option></select></div>
                 <div class="col-md-4"><input name="purchase_date" type="date" class="form-control"></div>
                 <div class="col-md-4"><input name="purchase_cost" type="number" step="0.01" class="form-control" placeholder="Purchase Cost"></div>
                 <div class="col-md-4"><input name="vendor_name" class="form-control" placeholder="Vendor"></div>
                 <div class="col-md-6"><textarea name="specifications" class="form-control" rows="3" placeholder="Specifications"></textarea></div>
                 <div class="col-md-3"><input name="warranty_start_date" type="date" class="form-control"></div>
-                <div class="col-md-3"><input name="warranty_expiry" type="number" class="form-control" placeholder="Warranty (years)"></div>
+                <div class="col-md-3"><input name="warranty_expiry" type="number" class="form-control" placeholder="Warranty Years"></div>
                 <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary">Create Asset</button></div>
             </form>
             <div id="asset-form-message" class="mt-3 text-muted-custom"></div>
@@ -251,56 +324,54 @@ async function initAddAssetPage() {
 
     document.getElementById("asset-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const formData = new FormData(event.target);
-        const payload = Object.fromEntries(formData.entries());
-        Object.keys(payload).forEach((key) => {
-            if (payload[key] === "") {
-                delete payload[key];
-            }
-        });
-        if (payload.purchase_cost) payload.purchase_cost = Number(payload.purchase_cost);
-        if (payload.warranty_expiry) payload.warranty_expiry = Number(payload.warranty_expiry);
-        const result = await API.post("/assets", payload);
-        document.getElementById("asset-form-message").textContent = `${result.message}. Asset ID: ${result.asset_id}`;
-        event.target.reset();
+        const form = event.target;
+        setFormBusy(form, true, "Creating...");
+        try {
+            const payload = Object.fromEntries(new FormData(form).entries());
+            Object.keys(payload).forEach((key) => {
+                if (payload[key] === "") delete payload[key];
+            });
+            if (payload.purchase_cost) payload.purchase_cost = Number(payload.purchase_cost);
+            if (payload.warranty_expiry) payload.warranty_expiry = Number(payload.warranty_expiry);
+            const result = await API.post("/assets", payload);
+            document.getElementById("asset-form-message").textContent = `${result.message}. Asset ID: ${result.asset_id}`;
+            showToast("Asset created successfully.");
+            form.reset();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
     });
 }
 
 async function initAssetDetailPage() {
     shellTemplate("Asset Detail", "assets", `
         <div class="row g-4">
-            <div class="col-lg-7">
-                <div class="ws-card" id="asset-detail"></div>
-            </div>
+            <div class="col-lg-7"><div class="ws-card" id="asset-detail"></div></div>
             <div class="col-lg-5">
-                <div class="ws-table-card mb-4">
-                    <h5 class="mb-3">Transaction History</h5>
-                    <div id="asset-transactions"></div>
-                </div>
-                <div class="ws-table-card">
-                    <h5 class="mb-3">Maintenance History</h5>
-                    <div id="asset-maintenance"></div>
-                </div>
+                <div class="ws-table-card mb-4"><h5 class="mb-3">Transaction History</h5><div id="asset-transactions"></div></div>
+                <div class="ws-table-card"><h5 class="mb-3">Maintenance History</h5><div id="asset-maintenance"></div></div>
             </div>
         </div>
     `);
-    const params = new URLSearchParams(window.location.search);
-    const assetId = params.get("id");
+
+    const assetId = new URLSearchParams(window.location.search).get("id");
     if (!assetId) {
         document.getElementById("asset-detail").innerHTML = `<div class="ws-empty">Missing asset id.</div>`;
         return;
     }
+
     const data = await API.get(`/assets/${assetId}`);
     const asset = data.asset;
+    const canEdit = Auth.hasRole(["Admin", "IT Manager"]);
+
     document.getElementById("asset-detail").innerHTML = `
         <div class="d-flex justify-content-between align-items-start mb-3">
-            <div>
-                <h4>${asset.asset_name}</h4>
-                <div class="text-muted-custom">${asset.brand || "-"} ${asset.model || ""}</div>
-            </div>
+            <div><h4 class="mb-1">${asset.asset_name}</h4><div class="text-muted-custom">${asset.brand || "-"} ${asset.model || ""}</div></div>
             ${statusBadge(asset.asset_status)}
         </div>
-        <div class="row g-3">
+        <div class="row g-3 mb-3">
             <div class="col-md-6"><strong>Type:</strong> ${asset.asset_type}</div>
             <div class="col-md-6"><strong>Serial:</strong> ${asset.serial_number}</div>
             <div class="col-md-6"><strong>Department:</strong> ${asset.department || "-"}</div>
@@ -308,34 +379,77 @@ async function initAssetDetailPage() {
             <div class="col-md-6"><strong>Condition:</strong> ${asset.condition_status}</div>
             <div class="col-md-6"><strong>QR:</strong> ${asset.qr_code_value || "-"}</div>
             <div class="col-12"><strong>Specifications:</strong><br>${asset.specifications || "-"}</div>
-            <div class="col-12 d-flex gap-2" data-role="Admin|IT Manager">
-                <button class="btn btn-primary" id="generate-qr-btn">Generate QR</button>
+        </div>
+        ${canEdit ? `
+            <div class="ws-card ws-card-inner mb-3">
+                <h6 class="mb-3">Edit Asset</h6>
+                <form id="asset-edit-form" class="row g-2">
+                    <div class="col-md-6"><input class="form-control" name="asset_name" value="${asset.asset_name || ""}" placeholder="Asset Name"></div>
+                    <div class="col-md-6"><input class="form-control" name="department" value="${asset.department || ""}" placeholder="Department"></div>
+                    <div class="col-md-6"><input class="form-control" name="location" value="${asset.location || ""}" placeholder="Location"></div>
+                    <div class="col-md-6">
+                        <select name="condition_status" class="form-select">
+                            <option ${asset.condition_status === "New" ? "selected" : ""}>New</option>
+                            <option ${asset.condition_status === "Good" ? "selected" : ""}>Good</option>
+                            <option ${asset.condition_status === "Damaged" ? "selected" : ""}>Damaged</option>
+                        </select>
+                    </div>
+                    <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary" type="submit">Save Changes</button></div>
+                </form>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary" id="generate-qr-btn">Generate QR</button>
                 ${Auth.hasRole(["Admin"]) ? `<button class="btn btn-outline-danger" id="retire-btn">Retire Asset</button>` : ""}
             </div>
-            <div class="col-12" id="asset-detail-message"></div>
-        </div>
+        ` : ""}
+        <div class="mt-3" id="asset-detail-message"></div>
     `;
 
+    document.getElementById("asset-edit-form")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        setFormBusy(form, true, "Saving...");
+        try {
+            const payload = Object.fromEntries(new FormData(form).entries());
+            await API.put(`/assets/${assetId}`, payload);
+            showToast("Asset updated successfully.");
+            window.location.reload();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
+    });
+
     document.getElementById("generate-qr-btn")?.addEventListener("click", async () => {
-        const result = await API.post(`/assets/${assetId}/qr`, {});
-        document.getElementById("asset-detail-message").innerHTML = `<a class="btn btn-sm btn-outline-light" href="${API.baseUrl}${result.qr_code_image_url}" target="_blank">Open QR Image</a>`;
+        try {
+            const result = await API.post(`/assets/${assetId}/qr`, {});
+            document.getElementById("asset-detail-message").innerHTML = `<a class="btn btn-sm btn-outline-secondary" href="${API.baseUrl}${result.qr_code_image_url}" target="_blank">Open QR Image</a>`;
+            showToast("QR generated.");
+        } catch (error) {
+            showToast(error.message, "error");
+        }
     });
 
     document.getElementById("retire-btn")?.addEventListener("click", async () => {
-        await API.patch(`/assets/${assetId}/retire`);
-        window.location.reload();
+        try {
+            await API.patch(`/assets/${assetId}/retire`);
+            showToast("Asset retired successfully.");
+            window.location.reload();
+        } catch (error) {
+            showToast(error.message, "error");
+        }
     });
 
     renderTable("asset-transactions", [
         { key: "transaction_type", label: "Type" },
         { key: "from_employee_name", label: "From" },
-        { key: "to_assignee_name", label: "To" }
+        { key: "to_assignee_name", label: "To" },
     ], data.transactions);
-
     renderTable("asset-maintenance", [
         { key: "issue_type", label: "Issue" },
         { key: "maintenance_status", label: "Status", render: (row) => statusBadge(row.maintenance_status) },
-        { key: "vendor", label: "Vendor" }
+        { key: "vendor", label: "Vendor" },
     ], data.maintenance);
 }
 
@@ -347,7 +461,7 @@ async function initTransactionsPage() {
         { key: "transaction_type", label: "Type" },
         { key: "from_employee_name", label: "From" },
         { key: "to_assignee_name", label: "To" },
-        { key: "action_date", label: "Date" }
+        { key: "action_date", label: "Date" },
     ], rows);
 }
 
@@ -386,12 +500,24 @@ async function initAssignPage() {
     await loadUsersForSelect("assign-user");
     document.getElementById("assign-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const result = await API.post("/transactions/assign", {
-            asset_id: Number(document.getElementById("assign-asset").value),
-            to_assignee: Number(document.getElementById("assign-user").value),
-            remarks: document.getElementById("assign-remarks").value
-        });
-        document.getElementById("assign-message").textContent = result.message;
+        const form = event.target;
+        setFormBusy(form, true, "Assigning...");
+        try {
+            const result = await API.post("/transactions/assign", {
+                asset_id: Number(document.getElementById("assign-asset").value),
+                to_assignee: Number(document.getElementById("assign-user").value),
+                remarks: document.getElementById("assign-remarks").value,
+            });
+            document.getElementById("assign-message").textContent = result.message;
+            showToast("Asset assigned.");
+            form.reset();
+            await loadAssetsForSelect("assign-asset", "Available");
+            await loadUsersForSelect("assign-user");
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
     });
 }
 
@@ -411,45 +537,44 @@ async function initTransferPage() {
     await loadUsersForSelect("transfer-user");
     document.getElementById("transfer-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const result = await API.post("/transactions/transfer", {
-            asset_id: Number(document.getElementById("transfer-asset").value),
-            to_assignee: Number(document.getElementById("transfer-user").value),
-            remarks: document.getElementById("transfer-remarks").value
-        });
-        document.getElementById("transfer-message").textContent = result.message;
+        const form = event.target;
+        setFormBusy(form, true, "Transferring...");
+        try {
+            const result = await API.post("/transactions/transfer", {
+                asset_id: Number(document.getElementById("transfer-asset").value),
+                to_assignee: Number(document.getElementById("transfer-user").value),
+                remarks: document.getElementById("transfer-remarks").value,
+            });
+            document.getElementById("transfer-message").textContent = result.message;
+            showToast("Asset transferred.");
+            form.reset();
+            await loadAssetsForSelect("transfer-asset", "Assigned");
+            await loadUsersForSelect("transfer-user");
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
     });
 }
 
 async function initMaintenancePage() {
     shellTemplate("Maintenance", "maintenance", `
         <div class="row g-4">
-            <div class="col-lg-5" data-role="Admin|IT Manager">
+            <div class="col-lg-5">
                 <div class="ws-card">
                     <form id="maintenance-form" class="row g-3">
                         <div class="col-12"><select id="maintenance-asset" class="form-select" required></select></div>
-                        <div class="col-md-6">
-                            <select id="issue-type" class="form-select" required>
-                                <option value="">Issue Type</option>
-                                <option>Repair</option><option>Physical Damage</option><option>Theft</option><option>Software Issue</option>
-                            </select>
-                        </div>
+                        <div class="col-md-6"><select id="issue-type" class="form-select" required><option value="">Issue Type</option><option>Repair</option><option>Physical Damage</option><option>Theft</option><option>Software Issue</option></select></div>
                         <div class="col-md-6"><input id="maintenance-vendor" class="form-control" placeholder="Vendor"></div>
                         <div class="col-12"><textarea id="issue-description" class="form-control" rows="3" placeholder="Issue Description"></textarea></div>
                         <div class="col-12"><textarea id="resolution-notes" class="form-control" rows="3" placeholder="Resolution Notes"></textarea></div>
-                        <div class="col-12 form-check">
-                            <input class="form-check-input" type="checkbox" id="warranty-applicable">
-                            <label class="form-check-label" for="warranty-applicable">Warranty Applicable</label>
-                        </div>
+                        <div class="col-12 form-check"><input class="form-check-input" type="checkbox" id="warranty-applicable"><label class="form-check-label" for="warranty-applicable">Warranty Applicable</label></div>
                         <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary">Log Issue</button></div>
                     </form>
                 </div>
             </div>
-            <div class="col-lg-7">
-                <div class="ws-table-card">
-                    <h5 class="mb-3">Maintenance Records</h5>
-                    <div id="maintenance-list"></div>
-                </div>
-            </div>
+            <div class="col-lg-7"><div class="ws-table-card"><h5 class="mb-3">Maintenance Records</h5><div id="maintenance-list"></div></div></div>
         </div>
     `);
     await loadAssetsForSelect("maintenance-asset", "Assigned");
@@ -458,20 +583,29 @@ async function initMaintenancePage() {
         { key: "asset_name", label: "Asset" },
         { key: "issue_type", label: "Issue" },
         { key: "vendor", label: "Vendor" },
-        { key: "maintenance_status", label: "Status", render: (row) => statusBadge(row.maintenance_status) }
+        { key: "maintenance_status", label: "Status", render: (row) => statusBadge(row.maintenance_status) },
     ], rows);
 
     document.getElementById("maintenance-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
-        await API.post("/maintenance", {
-            asset_id: Number(document.getElementById("maintenance-asset").value),
-            issue_description: document.getElementById("issue-description").value,
-            issue_type: document.getElementById("issue-type").value,
-            vendor: document.getElementById("maintenance-vendor").value,
-            resolution_notes: document.getElementById("resolution-notes").value,
-            warranty_applicable: document.getElementById("warranty-applicable").checked
-        });
-        window.location.reload();
+        const form = event.target;
+        setFormBusy(form, true, "Saving...");
+        try {
+            await API.post("/maintenance", {
+                asset_id: Number(document.getElementById("maintenance-asset").value),
+                issue_description: document.getElementById("issue-description").value,
+                issue_type: document.getElementById("issue-type").value,
+                vendor: document.getElementById("maintenance-vendor").value,
+                resolution_notes: document.getElementById("resolution-notes").value,
+                warranty_applicable: document.getElementById("warranty-applicable").checked,
+            });
+            showToast("Maintenance issue logged.");
+            window.location.reload();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
     });
 }
 
@@ -485,36 +619,50 @@ async function initUsersPage() {
                         <div class="col-12"><input name="username" class="form-control" placeholder="Username" required></div>
                         <div class="col-12"><input name="email" type="email" class="form-control" placeholder="Email" required></div>
                         <div class="col-12"><input name="password" type="password" class="form-control" placeholder="Password" required></div>
-                        <div class="col-12">
-                            <select name="role" class="form-select" required>
-                                <option value="">Role</option>
-                                <option>Admin</option><option>IT Manager</option><option>Viewer</option>
-                            </select>
-                        </div>
+                        <div class="col-12"><select name="role" class="form-select" required><option value="">Role</option><option>Admin</option><option>IT Manager</option><option>Viewer</option></select></div>
                         <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary">Create User</button></div>
                     </form>
                 </div>
             </div>
-            <div class="col-lg-8">
-                <div class="ws-table-card">
-                    <div id="users-list"></div>
-                </div>
-            </div>
+            <div class="col-lg-8"><div class="ws-table-card"><div id="users-list"></div></div></div>
         </div>
     `);
+
     const rows = await API.get("/users");
     renderTable("users-list", [
         { key: "user_name", label: "Name" },
         { key: "username", label: "Username" },
         { key: "role", label: "Role" },
-        { key: "is_active", label: "Status", render: (row) => row.is_active ? "Active" : "Inactive" }
+        { key: "is_active", label: "Status", render: (row) => row.is_active ? "Active" : "Inactive" },
+        { key: "user_id", label: "Action", render: (row) => row.is_active ? `<button class="btn btn-sm btn-outline-danger" data-action="deactivate-user" data-user-id="${row.user_id}">Deactivate</button>` : "-" },
     ], rows);
 
     document.getElementById("user-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const payload = Object.fromEntries(new FormData(event.target).entries());
-        await API.post("/users", payload);
-        window.location.reload();
+        const form = event.target;
+        setFormBusy(form, true, "Creating...");
+        try {
+            const payload = Object.fromEntries(new FormData(form).entries());
+            await API.post("/users", payload);
+            showToast("User created.");
+            window.location.reload();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
+    });
+
+    document.getElementById("users-list").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-action='deactivate-user']");
+        if (!button) return;
+        try {
+            await API.patch(`/users/${Number(button.dataset.userId)}/deactivate`);
+            showToast("User deactivated.");
+            window.location.reload();
+        } catch (error) {
+            showToast(error.message, "error");
+        }
     });
 }
 
@@ -530,20 +678,37 @@ async function initQrPage() {
     `);
     document.getElementById("qr-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const assetId = document.getElementById("qr-asset-id").value;
-        const result = await API.post(`/assets/${assetId}/qr`, {});
-        document.getElementById("qr-result").innerHTML = `
-            <div class="text-center">
-                <img class="img-fluid mb-3" src="${API.baseUrl}${result.qr_code_image_url}" alt="QR Code">
-                <div class="mb-3">${result.qr_code_value}</div>
-                <button class="btn btn-outline-light" onclick="window.print()">Print QR</button>
-            </div>
-        `;
+        const form = event.target;
+        setFormBusy(form, true, "Generating...");
+        try {
+            const result = await API.post(`/assets/${document.getElementById("qr-asset-id").value}/qr`, {});
+            document.getElementById("qr-result").innerHTML = `
+                <div class="text-center">
+                    <img class="img-fluid mb-3" src="${API.baseUrl}${result.qr_code_image_url}" alt="QR Code">
+                    <div class="mb-3">${result.qr_code_value}</div>
+                    <button class="btn btn-outline-secondary" onclick="window.print()">Print QR</button>
+                </div>
+            `;
+            showToast("QR code generated.");
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            setFormBusy(form, false);
+        }
     });
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
     const page = document.body.dataset.page;
+    Auth.requireAuth();
+    if (page && !Auth.canAccessPage(page)) {
+        showToast("Access denied for your role.", "error");
+        setTimeout(() => {
+            window.location.href = Auth.roleHomePage();
+        }, 700);
+        return;
+    }
+
     try {
         switch (page) {
             case "dashboard":
@@ -580,6 +745,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                 break;
         }
     } catch (error) {
-        document.body.insertAdjacentHTML("beforeend", `<div class="position-fixed bottom-0 end-0 m-3 alert alert-danger">${error.message}</div>`);
+        showToast(error.message, "error");
     }
 });

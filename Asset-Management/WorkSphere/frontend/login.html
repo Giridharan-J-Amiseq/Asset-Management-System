@@ -11,11 +11,20 @@
     <div class="ws-auth-shell">
         <div class="ws-auth-card">
             <div class="ws-brand mb-2">WorkSphere</div>
-            <p class="text-muted-custom mb-4">Sign in to manage the full lifecycle of your organization's assets.</p>
+            <p class="text-muted-custom mb-4">Sign in with your role to access the correct asset permissions.</p>
             <form id="login-form">
                 <div class="mb-3">
                     <label class="form-label">Username</label>
                     <input class="form-control" id="username" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Role</label>
+                    <select class="form-select" id="login-role" required>
+                        <option value="">Select Role</option>
+                        <option value="Admin">Admin</option>
+                        <option value="IT Manager">IT Manager</option>
+                        <option value="Viewer">User</option>
+                    </select>
                 </div>
                 <div class="mb-4">
                     <label class="form-label">Password</label>
@@ -30,19 +39,26 @@
     <script src="static/js/api.js"></script>
     <script>
         if (Auth.isLoggedIn()) {
-            window.location.href = "dashboard.html";
+            window.location.href = Auth.roleHomePage();
         }
         document.getElementById("login-form").addEventListener("submit", async (event) => {
             event.preventDefault();
+            const loginError = document.getElementById("login-error");
+            loginError.textContent = "";
             try {
+                const selectedRole = document.getElementById("login-role").value;
                 const result = await API.post("/auth/login", {
                     username: document.getElementById("username").value,
                     password: document.getElementById("password").value
                 });
+                if (result.user.role !== selectedRole) {
+                    Auth.logout();
+                    throw new Error(`Selected role does not match account role (${result.user.role}).`);
+                }
                 Auth.setSession(result);
-                window.location.href = "dashboard.html";
+                window.location.href = Auth.roleHomePage();
             } catch (error) {
-                document.getElementById("login-error").textContent = error.message;
+                loginError.textContent = error.message;
             }
         });
     </script>

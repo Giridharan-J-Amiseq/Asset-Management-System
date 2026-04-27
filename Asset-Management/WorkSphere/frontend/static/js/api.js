@@ -1,5 +1,5 @@
 const API = {
-    baseUrl: "http://127.0.0.1:8000",
+    baseUrl: window.location.origin?.startsWith("http") ? window.location.origin : "http://127.0.0.1:8000",
 
     async request(path, options = {}) {
         const headers = {

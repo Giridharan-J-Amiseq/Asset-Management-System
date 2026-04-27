@@ -10,7 +10,7 @@ DB_CONFIG = {
     "host": os.getenv("WS_DB_HOST", "localhost"),
     "port": int(os.getenv("WS_DB_PORT", "3306")),
     "user": os.getenv("WS_DB_USER", "root"),
-    "password": os.getenv("WS_DB_PASSWORD", "password"),
+    "password": os.getenv("WS_DB_PASSWORD", "9791Giri@"),
     "database": os.getenv("WS_DB_NAME", "worksphere"),
     "autocommit": False,
 }
