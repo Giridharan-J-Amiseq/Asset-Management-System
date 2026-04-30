@@ -189,6 +189,7 @@ function renderAssetCards(elementId, items) {
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
                     <h5 class="mb-1">${asset.asset_name}</h5>
+                    <div class="text-muted-custom small">${asset.asset_code || "Asset ID pending"}</div>
                     <div class="text-muted-custom small">${asset.serial_number}</div>
                 </div>
                 <a class="btn btn-sm btn-outline-secondary" href="asset_detail.html?id=${asset.asset_id}">View</a>
@@ -204,7 +205,7 @@ function renderAssetCards(elementId, items) {
             ${asset.qr_code_image_url ? `
                 <div class="mt-3 text-center">
                     <img src="${asset.qr_code_image_url}" alt="QR Code" style="width: 60px; height: 60px; cursor: pointer;" 
-                         onclick="viewQRModal('${asset.qr_code_image_url}', '${asset.custom_asset_id || asset.asset_id}')">
+                         onclick="viewQRModal('${asset.qr_code_image_url}', '${asset.asset_code || "Asset ID pending"}')">
                 </div>
             ` : ''}
         </article>
@@ -472,15 +473,21 @@ async function initAssetsPage() {
         // Populate locations
         const locationSelect = document.querySelector('select[name="location"]');
         if (locationSelect) {
+            const locations = Array.isArray(dropdownData.locations)
+                ? dropdownData.locations
+                : Object.keys(dropdownData.locations || {});
             locationSelect.innerHTML = '<option value="">Select Location</option>' + 
-                Object.keys(dropdownData.locations).map(l => `<option value="${l}">${l}</option>`).join('');
+                locations.map(l => `<option value="${l}">${l}</option>`).join('');
         }
         
         // Populate departments
         const departmentSelect = document.querySelector('select[name="department"]');
         if (departmentSelect) {
+            const departments = Array.isArray(dropdownData.departments)
+                ? dropdownData.departments
+                : Object.keys(dropdownData.departments || {});
             departmentSelect.innerHTML = '<option value="">Select Department</option>' + 
-                Object.keys(dropdownData.departments).map(d => `<option value="${d}">${d}</option>`).join('');
+                departments.map(d => `<option value="${d}">${d}</option>`).join('');
         }
     } catch (error) {
         showToast("Failed to load form options", "error");
@@ -523,7 +530,7 @@ async function initAssetsPage() {
                 const response = await API.post("/assets", data);
                 
                 // Show success with custom asset ID
-                showToast(`Asset created successfully! (ID: ${response.custom_asset_id})`, "success");
+                showToast(`Asset created successfully! (ID: ${response.asset_code || response.asset_id})`, "success");
                 
                 // Reset form and close modal
                 form.reset();
@@ -587,7 +594,7 @@ async function initAddAssetPage() {
             if (payload.purchase_cost) payload.purchase_cost = Number(payload.purchase_cost);
             if (payload.warranty_expiry) payload.warranty_expiry = Number(payload.warranty_expiry);
             const result = await API.post("/assets", payload);
-            document.getElementById("asset-form-message").textContent = `${result.message}. Asset ID: ${result.asset_id}`;
+            document.getElementById("asset-form-message").textContent = `${result.message}. Asset ID: ${result.asset_code || "Asset ID pending"}`;
             showToast("Asset created successfully.");
             form.reset();
         } catch (error) {
@@ -619,9 +626,52 @@ async function initAssetDetailPage() {
     const asset = data.asset;
     const canEdit = Auth.hasRole(["Admin", "IT Manager"]);
 
+    const fullAssetFields = [
+        ["asset_code", "Asset ID"],
+        ["asset_id", "Record ID"],
+        ["asset_name", "Asset Name"],
+        ["asset_type", "Asset Type"],
+        ["category", "Category"],
+        ["serial_number", "Serial Number"],
+        ["qr_code_value", "QR Code Value"],
+        ["qr_code_image_url", "QR Code Image URL"],
+        ["model", "Model"],
+        ["brand", "Brand"],
+        ["specifications", "Specifications"],
+        ["purchase_date", "Purchase Date"],
+        ["purchase_cost", "Purchase Cost"],
+        ["vendor_name", "Vendor Name"],
+        ["invoice_number", "Invoice Number"],
+        ["warranty_start_date", "Warranty Start Date"],
+        ["warranty_expiry", "Warranty Expiry (Years)"],
+        ["asset_status", "Asset Status"],
+        ["condition_status", "Condition Status"],
+        ["location", "Location"],
+        ["department", "Department"],
+        ["is_retired", "Is Retired"],
+        ["created_on", "Created On"],
+        ["modified_on", "Modified On"],
+        ["created_by", "Created By"],
+        ["modified_by", "Modified By"],
+    ];
+
+    const renderAssetFieldValue = (key, value) => {
+        if (value === null || value === undefined || value === "") return "-";
+        if (typeof value === "boolean") return value ? "Yes" : "No";
+        if (key === "is_retired") return String(value) === "1" ? "Yes" : "No";
+        if (key === "purchase_cost") {
+            const amount = Number(value);
+            return Number.isFinite(amount) ? amount.toFixed(2) : value;
+        }
+        return value;
+    };
+
     document.getElementById("asset-detail").innerHTML = `
         <div class="d-flex justify-content-between align-items-start mb-3">
-            <div><h4 class="mb-1">${asset.asset_name}</h4><div class="text-muted-custom">${asset.brand || "-"} ${asset.model || ""}</div></div>
+            <div>
+                <h4 class="mb-1">${asset.asset_name}</h4>
+                <div class="text-muted-custom">${asset.asset_code || "Asset ID pending"} | ${asset.brand || "-"} ${asset.model || ""}</div>
+            </div>
             ${statusBadge(asset.asset_status)}
         </div>
         <div class="row g-3 mb-3">
@@ -630,8 +680,24 @@ async function initAssetDetailPage() {
             <div class="col-md-6"><strong>Department:</strong> ${asset.department || "-"}</div>
             <div class="col-md-6"><strong>Location:</strong> ${asset.location || "-"}</div>
             <div class="col-md-6"><strong>Condition:</strong> ${asset.condition_status}</div>
-            <div class="col-md-6"><strong>QR:</strong> ${asset.qr_code_value || "-"}</div>
+            <div class="col-md-6"><strong>QR Value:</strong> ${asset.qr_code_value ?? "-"}</div>
             <div class="col-12"><strong>Specifications:</strong><br>${asset.specifications || "-"}</div>
+        </div>
+        <div class="ws-card ws-card-inner mb-3">
+            <h6 class="mb-3">Asset Master Data</h6>
+            <div class="row g-2">
+                ${fullAssetFields
+                    .map(([key, label]) => `
+                        <div class="col-md-6">
+                            <div class="border rounded p-2 h-100 bg-light-subtle">
+                                <div class="small text-muted-custom">${label}</div>
+                                <div class="fw-semibold text-break">${renderAssetFieldValue(key, asset[key])}</div>
+                            </div>
+                        </div>
+                    `)
+                    .join("")}
+            </div>
+            ${asset.qr_code_image_url ? `<div class="mt-3"><a class="btn btn-sm btn-outline-secondary" href="${API.baseUrl}${asset.qr_code_image_url}" target="_blank">Open Current QR Image</a></div>` : ""}
         </div>
         ${canEdit ? `
             <div class="ws-card ws-card-inner mb-3">

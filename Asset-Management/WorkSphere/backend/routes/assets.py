@@ -1,253 +1,78 @@
-from pathlib import Path
-from uuid import uuid4
-import random
-import string
-
-import qrcode
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from auth import CurrentUser, require_roles
-from database import fetch_all, fetch_one, get_db
+from constants import ADMIN_ROLE, ASSETS_PREFIX, EDITOR_ROLES
 from schemas import ApiMessage, AssetCreate, AssetUpdate, Pager
+from services.asset_service import AssetService
 
 
-router = APIRouter(prefix="/assets", tags=["Assets"])
-EDITOR = Depends(require_roles("Admin", "IT Manager"))
-ADMIN = Depends(require_roles("Admin"))
+class AssetController:
+    """Registers asset API endpoints and delegates business work to AssetService."""
 
-# Location and Department mappings
-LOCATIONS = {
-    "Chennai": "CHN",
-    "Pune": "PUN"
-}
+    def __init__(self, service: AssetService | None = None):
+        """Create the APIRouter and bind endpoint methods."""
 
-DEPARTMENTS = {
-    "IA": "Intelligent Automation",
-    "Cyber Security": "Cyber Security",
-    "IT Administration": "IT Administration"
-}
+        self.service = service or AssetService()
+        self.router = APIRouter(prefix=ASSETS_PREFIX, tags=["Assets"])
+        self.register_routes()
 
+    def register_routes(self) -> None:
+        """Attach asset endpoint methods to the router."""
 
-@router.get("/meta/dropdowns")
-def get_dropdowns(_: CurrentUser):
-    """Get location and department options for form dropdowns"""
-    return {
-        "locations": list(LOCATIONS.keys()),
-        "departments": ["IA", "Cyber Security", "IT Administration"],
-        "asset_types": ["Laptop", "Desktop", "Server", "Furniture", "Printer", "Phone", "Monitor", "UPS", "Other"],
-        "asset_statuses": ["Available", "Assigned", "In Repair", "Retired", "Lost"],
-        "conditions": ["New", "Good", "Damaged"],
-        "categories": ["IT", "Non-IT"]
-    }
+        self.router.add_api_route("/meta/dropdowns", self.get_dropdowns, methods=["GET"])
+        self.router.add_api_route("", self.list_assets, methods=["GET"], response_model=Pager)
+        self.router.add_api_route("/{asset_id}", self.get_asset, methods=["GET"])
+        self.router.add_api_route("", self.create_asset, methods=["POST"], status_code=status.HTTP_201_CREATED)
+        self.router.add_api_route("/{asset_id}", self.update_asset, methods=["PUT"])
+        self.router.add_api_route("/{asset_id}/retire", self.retire_asset, methods=["PATCH"], response_model=ApiMessage)
+        self.router.add_api_route("/{asset_id}/qr", self.generate_qr, methods=["POST"])
 
+    def get_dropdowns(self, _: CurrentUser):
+        """Return select-list values used by the asset form."""
 
-def _asset_or_404(asset_id: int) -> dict:
-    asset = fetch_one(
-        """
-        SELECT *
-        FROM asset_master
-        WHERE asset_id = %s
-        LIMIT 1
-        """,
-        (asset_id,),
-    )
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return asset
+        return self.service.dropdown_options()
 
+    def list_assets(
+        self,
+        _: CurrentUser,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=10, ge=1, le=100),
+        search: str | None = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
+        department: str | None = None,
+    ):
+        """Return a filtered and paginated list of active assets."""
 
-@router.get("", response_model=Pager)
-def list_assets(
-    _: CurrentUser,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=100),
-    search: str | None = None,
-    status_filter: str | None = None,
-    type_filter: str | None = None,
-    department: str | None = None,
-):
-    filters = ["is_retired = FALSE"]
-    params: list = []
-    if search:
-        filters.append("(asset_name LIKE %s OR serial_number LIKE %s OR brand LIKE %s)")
-        search_value = f"%{search}%"
-        params.extend([search_value, search_value, search_value])
-    if status_filter:
-        filters.append("asset_status = %s")
-        params.append(status_filter)
-    if type_filter:
-        filters.append("asset_type = %s")
-        params.append(type_filter)
-    if department:
-        filters.append("department = %s")
-        params.append(department)
+        return self.service.list_assets(page, page_size, search, status_filter, type_filter, department)
 
-    where_clause = " AND ".join(filters)
-    total_row = fetch_one(f"SELECT COUNT(*) AS total FROM asset_master WHERE {where_clause}", tuple(params))
-    offset = (page - 1) * page_size
-    items = fetch_all(
-        f"""
-        SELECT *
-        FROM asset_master
-        WHERE {where_clause}
-        ORDER BY modified_on DESC, created_on DESC
-        LIMIT %s OFFSET %s
-        """,
-        tuple([*params, page_size, offset]),
-    )
-    return {"page": page, "page_size": page_size, "total": total_row["total"], "items": items}
+    def get_asset(self, asset_id: str, _: CurrentUser):
+        """Return asset details with transaction and maintenance history."""
+
+        return self.service.get_asset_detail(asset_id)
+
+    def create_asset(self, payload: AssetCreate, current_user: dict = Depends(require_roles(*EDITOR_ROLES))):
+        """Create an asset, its asset code, and its QR code."""
+
+        return self.service.create_asset(payload, current_user)
+
+    def update_asset(self, asset_id: str, payload: AssetUpdate, current_user: dict = Depends(require_roles(*EDITOR_ROLES))):
+        """Update editable asset fields."""
+
+        return self.service.update_asset(asset_id, payload, current_user)
+
+    def retire_asset(self, asset_id: str, current_user: dict = Depends(require_roles(ADMIN_ROLE))):
+        """Retire an asset so it no longer appears in the active inventory."""
+
+        return self.service.retire_asset(asset_id, current_user)
+
+    def generate_qr(self, asset_id: str, _: dict = Depends(require_roles(*EDITOR_ROLES))):
+        """Generate or refresh an asset QR image."""
+
+        return self.service.generate_qr(asset_id)
 
 
-@router.get("/{asset_id}")
-def get_asset(asset_id: int, _: CurrentUser):
-    asset = _asset_or_404(asset_id)
-    transactions = fetch_all(
-        """
-        SELECT at.*, u1.user_name AS from_employee_name, u2.user_name AS to_assignee_name, up.user_name AS performed_by_name
-        FROM asset_transaction at
-        LEFT JOIN users u1 ON at.from_employee = u1.user_id
-        LEFT JOIN users u2 ON at.to_assignee = u2.user_id
-        LEFT JOIN users up ON at.performed_by = up.user_id
-        WHERE at.asset_id = %s
-        ORDER BY at.action_date DESC
-        """,
-        (asset_id,),
-    )
-    maintenance = fetch_all(
-        """
-        SELECT *
-        FROM maintenance
-        WHERE asset_id = %s
-        ORDER BY created_on DESC
-        """,
-        (asset_id,),
-    )
-    return {"asset": asset, "transactions": transactions, "maintenance": maintenance}
+def get_router() -> APIRouter:
+    """Create and return the asset router during application configuration."""
 
-
-@router.post("", status_code=status.HTTP_201_CREATED)
-def create_asset(payload: AssetCreate, current_user: dict = EDITOR):
-    query = """
-        INSERT INTO asset_master (
-            asset_name, asset_type, category, serial_number, qr_code_value, model, brand, specifications,
-            purchase_date, purchase_cost, vendor_name, invoice_number, warranty_start_date, warranty_expiry,
-            asset_status, condition_status, location, department, is_retired, created_by, modified_by
-        ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE, %s, %s
-        )
-    """
-    with get_db() as (_, cursor):
-        cursor.execute(
-            query,
-            (
-                payload.asset_name,
-                payload.asset_type,
-                payload.category,
-                payload.serial_number,
-                "",  # qr_code_value will be generated after asset_id is known
-                payload.model,
-                payload.brand,
-                payload.specifications,
-                payload.purchase_date,
-                payload.purchase_cost,
-                payload.vendor_name,
-                payload.invoice_number,
-                payload.warranty_start_date,
-                payload.warranty_expiry,
-                payload.asset_status,
-                payload.condition_status,
-                payload.location,
-                payload.department,
-                current_user["user_id"],
-                current_user["user_id"],
-            ),
-        )
-        asset_id = cursor.lastrowid
-
-    # Generate custom asset ID format: AMI-[location]-[asset_type]-[serial_last_5]-[random_2_char]
-    location_code = LOCATIONS.get(payload.location, "UNK")[:3].upper()
-    asset_type_code = payload.asset_type[:3].upper()
-    serial_suffix = (payload.serial_number[-5:] if len(payload.serial_number) >= 5 else payload.serial_number).upper()
-    random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
-    
-    custom_asset_id = f"AMI-{location_code}-{asset_type_code}-{serial_suffix}-{random_suffix}"
-    
-    # Generate QR code
-    qr_dir = Path(__file__).resolve().parent.parent / "static" / "qrcodes"
-    qr_dir.mkdir(parents=True, exist_ok=True)
-    file_name = f"asset_{asset_id}.png"
-    file_path = qr_dir / file_name
-    
-    qr_value = custom_asset_id
-    image = qrcode.make(qr_value)
-    image.save(file_path)
-    
-    image_url = f"/static/qrcodes/{file_name}"
-    
-    # Update asset with custom ID and QR code info
-    with get_db() as (_, cursor):
-        cursor.execute(
-            "UPDATE asset_master SET qr_code_value = %s, qr_code_image_url = %s, modified_on = CURRENT_TIMESTAMP WHERE asset_id = %s",
-            (qr_value, image_url, asset_id),
-        )
-    
-    return {
-        "message": "Asset created successfully",
-        "asset_id": asset_id,
-        "custom_asset_id": custom_asset_id,
-        "qr_code_value": qr_value,
-        "qr_code_image_url": image_url
-    }
-
-
-@router.put("/{asset_id}")
-def update_asset(asset_id: int, payload: AssetUpdate, current_user: dict = EDITOR):
-    asset = _asset_or_404(asset_id)
-    data = payload.model_dump(exclude_unset=True)
-    if not data:
-        return {"message": "No changes supplied", "asset_id": asset_id}
-
-    assignments = ", ".join(f"{field} = %s" for field in data.keys())
-    values = list(data.values()) + [current_user["user_id"], asset_id]
-    with get_db() as (_, cursor):
-        cursor.execute(
-            f"UPDATE asset_master SET {assignments}, modified_by = %s, modified_on = CURRENT_TIMESTAMP WHERE asset_id = %s",
-            tuple(values),
-        )
-    return {"message": "Asset updated successfully", "asset_before": asset}
-
-
-@router.patch("/{asset_id}/retire", response_model=ApiMessage)
-def retire_asset(asset_id: int, current_user: dict = ADMIN):
-    _asset_or_404(asset_id)
-    with get_db() as (_, cursor):
-        cursor.execute(
-            """
-            UPDATE asset_master
-            SET is_retired = TRUE, asset_status = 'Retired', modified_by = %s, modified_on = CURRENT_TIMESTAMP
-            WHERE asset_id = %s
-            """,
-            (current_user["user_id"], asset_id),
-        )
-    return {"message": "Asset retired successfully"}
-
-
-@router.post("/{asset_id}/qr")
-def generate_qr(asset_id: int, _: dict = EDITOR):
-    asset = _asset_or_404(asset_id)
-    qr_value = asset["qr_code_value"] or f"WS-ASSET-{asset_id}"
-    qr_dir = Path(__file__).resolve().parent.parent / "static" / "qrcodes"
-    qr_dir.mkdir(parents=True, exist_ok=True)
-    file_name = f"asset_{asset_id}.png"
-    file_path = qr_dir / file_name
-
-    image = qrcode.make(qr_value)
-    image.save(file_path)
-
-    image_url = f"/static/qrcodes/{file_name}"
-    with get_db() as (_, cursor):
-        cursor.execute(
-            "UPDATE asset_master SET qr_code_value = %s, qr_code_image_url = %s, modified_on = CURRENT_TIMESTAMP WHERE asset_id = %s",
-            (qr_value, image_url, asset_id),
-        )
-    return {"message": "QR code generated successfully", "qr_code_value": qr_value, "qr_code_image_url": image_url}
+    return AssetController().router
