@@ -44,12 +44,21 @@ export function canAccess(pathname) {
     "/transfer": ["Admin", "IT Manager"],
     "/maintenance": ["Admin", "IT Manager"],
     "/users": ["Admin"],
+    "/users/:id": ["Admin"],
     "/qr-print": ["Admin", "IT Manager"],
   };
 
   const match = Object.entries(accessMap).find(([pattern]) => {
     if (pattern.includes(":id")) {
-      return pathname.startsWith("/assets/") && pathname !== "/assets/new";
+      if (pattern.startsWith("/assets/")) {
+        return pathname.startsWith("/assets/") && pathname !== "/assets/new";
+      }
+
+      if (pattern.startsWith("/users/")) {
+        return pathname.startsWith("/users/") && pathname !== "/users";
+      }
+
+      return false;
     }
     return pattern === pathname;
   });

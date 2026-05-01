@@ -14,8 +14,10 @@ from constants import (
     ASSET_STATUSES,
     ASSET_TYPES,
     CONDITION_STATUSES,
+    STATUS_ASSIGNED,
 )
 from repositories.asset_repository import AssetRepository
+from repositories.activity_repository import ActivityRepository
 from schemas import AssetCreate, AssetUpdate
 from utils.qr_code import QRCodeGenerator
 
@@ -27,6 +29,7 @@ class AssetService:
         """Wire the service to its repository and QR helper."""
 
         self.repository = repository or AssetRepository()
+        self.activity_repository = ActivityRepository()
         qr_dir = Path(__file__).resolve().parent.parent / "static" / "qrcodes"
         self.qr_generator = qr_generator or QRCodeGenerator(qr_dir)
         self._asset_code_backfill_ready = False
@@ -76,22 +79,57 @@ class AssetService:
         """Build the readable text that a scanner displays after reading the QR code."""
 
         latest_transaction = transactions[0] if transactions else None
-        assigned_to = latest_transaction.get("to_assignee_name") if latest_transaction else None
-        assigned_on = latest_transaction.get("action_date") if latest_transaction else None
+        if asset.get("asset_status") == STATUS_ASSIGNED:
+            assigned_to = latest_transaction.get("to_assignee_name") if latest_transaction else None
+            assigned_on = latest_transaction.get("action_date") if latest_transaction else None
+        else:
+            assigned_to = None
+            assigned_on = None
         generated_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        def safe(value: Any) -> str:
+            if value is None:
+                return "-"
+            text = str(value).strip()
+            return text if text else "-"
 
         return "\n".join(
             [
                 "WorkSphere Asset",
-                f"Asset ID: {asset.get('formatted_asset_id') or asset.get('asset_code') or '-'}",
-                f"Asset Name: {asset.get('asset_name') or '-'}",
-                f"Asset Count: {asset.get('asset_count') or asset.get('asset_id') or '-'}",
-                f"Serial Number: {asset.get('serial_number') or '-'}",
+                f"Asset ID: {safe(asset.get('formatted_asset_id') or asset.get('asset_code'))}",
+                f"Asset Name: {safe(asset.get('asset_name'))}",
+                f"Serial Number: {safe(asset.get('serial_number'))}",
+                f"Asset Count: {safe(asset.get('asset_count') or asset.get('asset_id'))}",
+                f"Asset Type: {safe(asset.get('asset_type'))}",
+                f"Category: {safe(asset.get('category'))}",
+                f"Department: {safe(asset.get('department'))}",
+                f"Location: {safe(asset.get('location'))}",
+                f"Condition: {safe(asset.get('condition_status'))}",
+                f"Brand: {safe(asset.get('brand'))}",
+                f"Model: {safe(asset.get('model'))}",
+                f"Status: {safe(asset.get('asset_status'))}",
                 f"Assigned To: {assigned_to or 'Not assigned'}",
                 f"Assigned Date: {assigned_on or '-'}",
+                f"Purchase Date: {safe(asset.get('purchase_date'))}",
+                f"Purchase Cost: {safe(asset.get('purchase_cost'))}",
+                f"Invoice Number: {safe(asset.get('invoice_number'))}",
+                f"Vendor Name: {safe(asset.get('vendor_name'))}",
+                f"Warranty Start: {safe(asset.get('warranty_start_date'))}",
+                f"Warranty Expiry (years): {safe(asset.get('warranty_expiry'))}",
                 f"Generated On: {generated_on}",
             ]
         )
+
+    def return_assets_from_user(self, user_id: int, modified_by: int) -> list[int]:
+        """Return all assets currently assigned to a user back to Available."""
+
+        try:
+            user_id_value = int(user_id)
+            modified_by_value = int(modified_by)
+        except (TypeError, ValueError):
+            return []
+
+        return self.repository.return_assets_from_user(user_id_value, modified_by_value)
 
     def ensure_asset_code_values(self) -> None:
         """Backfill asset codes for old rows once per process."""
@@ -161,7 +199,20 @@ class AssetService:
             "asset": asset,
             "transactions": self.repository.list_transactions_for_asset(internal_asset_id),
             "maintenance": self.repository.list_maintenance_for_asset(internal_asset_id),
+            "activity": self.activity_repository.list_logs(entity_type="asset", entity_id=internal_asset_id, limit=200),
         }
+
+    def list_assets_assigned_to_user(self, user_id: int) -> list[dict[str, Any]]:
+        """Return assets whose latest transaction assigns them to the user."""
+
+        try:
+            user_id_value = int(user_id)
+        except (TypeError, ValueError):
+            return []
+
+        self.ensure_asset_code_values()
+        rows = self.repository.list_assets_assigned_to_user(user_id_value)
+        return [self.decorate_asset(row) for row in rows]
 
     def create_asset(self, payload: AssetCreate, current_user: dict[str, Any]) -> dict[str, Any]:
         """Create an asset, assign its final asset code, and generate its QR image."""
@@ -209,6 +260,19 @@ class AssetService:
         if data.get("serial_number") and self.repository.find_by_serial(data["serial_number"], exclude_asset_id=internal_asset_id):
             raise HTTPException(status_code=400, detail="Serial number already exists")
         self.repository.update_asset_fields(internal_asset_id, data, current_user["user_id"])
+        try:
+            changes = {key: {"before": asset.get(key), "after": data.get(key)} for key in data.keys()}
+        except Exception:
+            changes = {"updated_fields": list(data.keys())}
+
+        self.activity_repository.create_log(
+            entity_type="asset",
+            entity_id=internal_asset_id,
+            action="asset_updated",
+            performed_by=current_user.get("user_id"),
+            details={"changes": changes},
+        )
+
         return {"message": "Asset updated successfully", "asset_before": asset}
 
     def retire_asset(self, asset_id: int | str, current_user: dict[str, Any]) -> dict[str, str]:
@@ -216,7 +280,35 @@ class AssetService:
 
         asset = self.get_asset_or_404(asset_id)
         self.repository.retire_asset(asset["asset_id"], current_user["user_id"])
+        self.activity_repository.create_log(
+            entity_type="asset",
+            entity_id=asset["asset_id"],
+            action="asset_retired",
+            performed_by=current_user.get("user_id"),
+            details={"before": {"asset_status": asset.get("asset_status"), "is_retired": asset.get("is_retired")}, "after": {"asset_status": "Retired", "is_retired": True}},
+        )
         return {"message": "Asset retired successfully"}
+
+    def mark_available(self, asset_id: int | str, current_user: dict[str, Any]) -> dict[str, Any]:
+        """Mark an asset as Available (return to inventory)."""
+
+        asset = self.get_asset_or_404(asset_id)
+        if asset.get("is_retired"):
+            raise HTTPException(status_code=400, detail="Retired assets cannot be returned to Available")
+
+        updated = self.repository.mark_available(asset["asset_id"], current_user["user_id"])
+        if not updated:
+            raise HTTPException(status_code=404, detail="Asset not found")
+
+        self.activity_repository.create_log(
+            entity_type="asset",
+            entity_id=asset["asset_id"],
+            action="asset_mark_available",
+            performed_by=current_user.get("user_id"),
+            details={"before": {"asset_status": asset.get("asset_status")}, "after": {"asset_status": "Available"}},
+        )
+
+        return {"message": "Asset marked available", "asset_id": asset["asset_id"], "asset_status": "Available"}
 
     def generate_qr(self, asset_id: int | str) -> dict[str, Any]:
         """Generate or refresh the QR code image for an asset."""
@@ -233,6 +325,8 @@ class AssetService:
             "qr_code_value": int(qr_value),
             "formatted_asset_id": asset.get("formatted_asset_id") or asset.get("asset_code"),
             "asset_count": asset.get("asset_count") or internal_asset_id,
+            "asset_name": asset.get("asset_name"),
+            "serial_number": asset.get("serial_number"),
             "qr_code_image_url": image_url,
             "qr_payload": qr_payload,
         }

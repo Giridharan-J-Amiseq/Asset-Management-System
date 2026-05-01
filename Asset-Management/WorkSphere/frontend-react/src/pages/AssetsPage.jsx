@@ -9,6 +9,7 @@ import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { InputField, SelectField, TextareaField } from "../components/FormField";
 import { Layout } from "../components/Layout";
+import { ConfirmButton } from "../components/ConfirmButton";
 
 const defaultForm = {
   asset_name: "",
@@ -128,6 +129,19 @@ export function AssetsPage() {
     }
   };
 
+  const markAvailable = async (assetId) => {
+    setMessage("");
+    setError("");
+    try {
+      await api.patch(`/assets/${assetId}/available`);
+      const refreshed = await fetchAssets();
+      setAssetsData(refreshed);
+      setMessage("Asset marked available.");
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  };
+
   return (
     <Layout title="Manage Asset" subtitle="Browse, filter, and register assets from one responsive screen.">
       <div className="space-y-6">
@@ -226,6 +240,17 @@ export function AssetsPage() {
                 <Button as={Link} to={`/assets/${asset.asset_id}`} variant="secondary">View</Button>
                 <Button as={Link} to="/qr-print" variant="ghost" className="border border-slate-200">QR</Button>
               </div>
+
+              {asset.asset_status !== "Available" && asset.asset_status !== "Retired" && (
+                <div className="mt-3">
+                  <ConfirmButton
+                    confirmText="Mark this asset as Available?"
+                    onConfirm={() => markAvailable(asset.asset_id)}
+                  >
+                    Mark available
+                  </ConfirmButton>
+                </div>
+              )}
             </article>
           ))}
         </div>

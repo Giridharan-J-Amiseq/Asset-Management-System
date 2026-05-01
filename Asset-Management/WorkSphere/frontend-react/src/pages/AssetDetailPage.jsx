@@ -49,6 +49,17 @@ export function AssetDetailPage() {
   }, [assetId]);
 
   const asset = data?.asset;
+  const activity = data?.activity || [];
+  const latestTransaction = data?.transactions?.[0] || null;
+  const currentHolder =
+    asset?.asset_status === "Assigned"
+      ? {
+          userId: latestTransaction?.to_assignee,
+          name: latestTransaction?.to_assignee_name,
+          assignedOn: latestTransaction?.action_date,
+          performedByName: latestTransaction?.performed_by_name,
+        }
+      : null;
 
   const saveAsset = async (event) => {
     event.preventDefault();
@@ -63,15 +74,15 @@ export function AssetDetailPage() {
     }
   };
 
-  const generateQr = async () => {
-    try {
-      const response = await api.post(`/assets/${assetId}/qr`, {});
-      setMessage("QR code generated with asset details.");
-      const updated = await api.get(`/assets/${assetId}`);
-      setData({ ...updated, qr_payload: response.qr_payload });
-    } catch (requestError) {
-      setError(requestError.message);
+  const handlePrintQr = () => {
+    const printableId = asset?.formatted_asset_id || asset?.asset_code || assetId;
+    if (!asset?.qr_code_image_url) {
+      navigate(`/qr-print?assetId=${encodeURIComponent(printableId)}`);
+      return;
     }
+
+    // Use in-page printing to avoid popup blockers.
+    window.print();
   };
 
   const retireAsset = async () => {
@@ -86,6 +97,22 @@ export function AssetDetailPage() {
 
   return (
     <Layout title="Asset detail" subtitle="Detailed record, QR code, transactions, and maintenance history.">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .asset-print-label, .asset-print-label * { visibility: visible !important; }
+          .asset-print-label {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            padding: 16px !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+            background: #fff !important;
+          }
+        }
+      `}</style>
       {loading ? (
         <Card>
           <div className="animate-pulse space-y-4">
@@ -102,6 +129,38 @@ export function AssetDetailPage() {
         </Card>
       ) : (
         <div className="space-y-6">
+          {asset?.qr_code_image_url && (
+            <div className="asset-print-label" aria-hidden="true">
+              <div
+                style={{
+                  border: "2px solid #000",
+                  padding: "18px 22px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "24px",
+                }}
+              >
+                <div style={{ display: "grid", gap: "8px" }}>
+                  <div style={{ fontSize: "16px", lineHeight: 1.2, fontWeight: 800 }}>
+                    Asset ID:<span style={{ fontWeight: 700, marginLeft: 6 }}>{asset.formatted_asset_id || asset.asset_code || "-"}</span>
+                  </div>
+                  <div style={{ fontSize: "16px", lineHeight: 1.2 }}>
+                    <strong>Asset Name:</strong> {asset.asset_name || "-"}
+                  </div>
+                  <div style={{ fontSize: "14px", lineHeight: 1.2 }}>
+                    <strong>S/N:</strong> {asset.serial_number || "-"}
+                  </div>
+                </div>
+                <img
+                  src={`${API_BASE_URL}${asset.qr_code_image_url}`}
+                  alt="Asset QR"
+                  style={{ width: 150, height: 150, objectFit: "contain" }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="grid min-w-0 gap-6 2xl:grid-cols-[1.1fr_0.9fr]">
             <Card
               title={asset.asset_name}
@@ -112,6 +171,19 @@ export function AssetDetailPage() {
                 <div className="space-y-3 text-sm text-slate-700">
                   <InfoRow label="Asset ID" value={asset.formatted_asset_id || asset.asset_code || "-"} />
                   <InfoRow label="Asset count" value={asset.asset_count || asset.asset_id} />
+                  <InfoRow
+                    label="Currently with"
+                    value={
+                      currentHolder?.name ? (
+                        <Link className="font-semibold text-slate-900 hover:underline" to={`/users/${currentHolder.userId}`}>
+                          {currentHolder.name}
+                        </Link>
+                      ) : (
+                        "Not assigned"
+                      )
+                    }
+                  />
+                  <InfoRow label="Assigned on" value={currentHolder?.assignedOn ? formatDateTime(currentHolder.assignedOn) : "-"} />
                   <InfoRow label="Asset type" value={asset.asset_type} />
                   <InfoRow label="Category" value={asset.category} />
                   <InfoRow label="Condition" value={asset.condition_status} />
@@ -133,16 +205,11 @@ export function AssetDetailPage() {
                     )}
                   </div>
                   <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap">
-                    <Button onClick={generateQr}>Generate QR</Button>
+                    <Button onClick={handlePrintQr}>Print QR</Button>
                     <Button as="a" href={`${asset.qr_code_image_url ? `${API_BASE_URL}${asset.qr_code_image_url}` : "#"}`} variant="secondary" target="_blank" rel="noreferrer">
                       Open image
                     </Button>
                   </div>
-                  {data.qr_payload && (
-                    <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-4 text-left text-xs leading-6 text-slate-600">
-                      {data.qr_payload}
-                    </pre>
-                  )}
                 </div>
               </div>
 
@@ -232,6 +299,28 @@ export function AssetDetailPage() {
             />
           </Card>
 
+          <Card title="Change log" subtitle="Recorded updates and status changes for this asset.">
+            <DataTable
+              columns={[
+                { key: "action", label: "Action" },
+                { key: "performed_by_name", label: "Performed by", render: (row) => row.performed_by_name || "-" },
+                { key: "created_on", label: "Date", render: (row) => formatDateTime(row.created_on) },
+                {
+                  key: "details",
+                  label: "Details",
+                  render: (row) => (
+                    <span className="block max-w-[28rem] truncate text-slate-600" title={row.details || ""}>
+                      {formatActivityDetails(row.details)}
+                    </span>
+                  ),
+                },
+              ]}
+              rows={activity}
+              emptyMessage="No change log entries recorded yet."
+              getRowKey={(row) => `asset-activity-${row.log_id}`}
+            />
+          </Card>
+
           <Card title="Asset audit details" subtitle="Full record values useful for audit checks.">
             <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
               <AuditField label="Asset ID" value={asset.formatted_asset_id || asset.asset_code} />
@@ -273,4 +362,19 @@ function AuditField({ label, value }) {
       <div className="mt-1 break-words font-semibold text-slate-900">{value || "-"}</div>
     </div>
   );
+}
+
+function formatActivityDetails(value) {
+  if (!value) return "-";
+
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed?.changes && typeof parsed.changes === "object") {
+      const keys = Object.keys(parsed.changes);
+      return keys.length ? `Updated: ${keys.join(", ")}` : "Updated";
+    }
+    return typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+  } catch {
+    return String(value);
+  }
 }

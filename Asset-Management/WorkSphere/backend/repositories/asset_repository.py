@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import String, and_, cast, exists, func, or_, select
+from sqlalchemy.orm import aliased
 
-from constants import ASSET_CODE_PREFIX, STATUS_RETIRED
+from constants import ASSET_CODE_PREFIX, STATUS_ASSIGNED, STATUS_AVAILABLE, STATUS_RETIRED
 from db.models import AssetMaster, AssetTransaction, Maintenance, User
 from db.serialization import model_to_dict
 from db.session import session_scope
@@ -88,7 +89,11 @@ class AssetRepository:
         type_filter: str | None = None,
         department: str | None = None,
     ) -> int:
-        """Count non-retired assets after applying optional filters."""
+        """Count assets after applying optional filters.
+
+        By default, retired assets are hidden. If status_filter is Retired, only
+        retired assets are counted.
+        """
 
         with session_scope() as session:
             where_clauses = self._build_asset_filters(search, status_filter, type_filter, department)
@@ -104,7 +109,11 @@ class AssetRepository:
         type_filter: str | None = None,
         department: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return paginated non-retired assets after applying optional filters."""
+        """Return paginated assets after applying optional filters.
+
+        By default, retired assets are hidden. If status_filter is Retired, only
+        retired assets are returned.
+        """
 
         with session_scope() as session:
             where_clauses = self._build_asset_filters(search, status_filter, type_filter, department)
@@ -129,7 +138,9 @@ class AssetRepository:
         type_filter: str | None,
         department: str | None,
     ) -> list[Any]:
-        filters: list[Any] = [AssetMaster.is_retired.is_(False)]
+        # Default behavior hides retired assets in active inventory.
+        # When explicitly filtering for Retired, include only retired rows.
+        filters: list[Any] = [AssetMaster.is_retired.is_(True)] if status_filter == STATUS_RETIRED else [AssetMaster.is_retired.is_(False)]
 
         if search:
             search_value = f"%{search}%"
@@ -254,6 +265,18 @@ class AssetRepository:
                 asset.qr_code_value = qr_value
                 asset.qr_code_image_url = image_url
 
+    def mark_available(self, asset_id: int, modified_by: int) -> dict[str, Any] | None:
+        """Set an asset status to Available and return the updated asset row."""
+
+        with session_scope() as session:
+            asset = session.get(AssetMaster, asset_id)
+            if not asset:
+                return None
+            asset.asset_status = STATUS_AVAILABLE
+            asset.modified_by = modified_by
+            session.flush()
+            return model_to_dict(asset)
+
     def list_transactions_for_asset(self, asset_id: int) -> list[dict[str, Any]]:
         """Return the movement history for one asset."""
 
@@ -312,3 +335,109 @@ class AssetRepository:
                 .all()
             )
             return [model_to_dict(row) for row in rows]
+
+    def list_assets_assigned_to_user(self, user_id: int) -> list[dict[str, Any]]:
+        """Return assets where the latest transaction assigns them to the user."""
+
+        with session_scope() as session:
+            ranked_transactions = (
+                select(
+                    AssetTransaction.transaction_id,
+                    AssetTransaction.asset_id,
+                    AssetTransaction.to_assignee,
+                    AssetTransaction.from_employee,
+                    AssetTransaction.performed_by,
+                    AssetTransaction.action_date,
+                    AssetTransaction.transaction_type,
+                    AssetTransaction.remarks,
+                    func.row_number()
+                    .over(
+                        partition_by=AssetTransaction.asset_id,
+                        order_by=(AssetTransaction.action_date.desc(), AssetTransaction.transaction_id.desc()),
+                    )
+                    .label("rn"),
+                )
+                .subquery()
+            )
+
+            from_user = aliased(User)
+            performed_user = aliased(User)
+
+            rows = session.execute(
+                select(
+                    AssetMaster,
+                    ranked_transactions.c.action_date.label("assigned_on"),
+                    ranked_transactions.c.transaction_type.label("assignment_type"),
+                    ranked_transactions.c.remarks.label("remarks"),
+                    from_user.user_name.label("from_employee_name"),
+                    performed_user.user_name.label("performed_by_name"),
+                )
+                .join(ranked_transactions, ranked_transactions.c.asset_id == AssetMaster.asset_id)
+                .outerjoin(from_user, from_user.user_id == ranked_transactions.c.from_employee)
+                .outerjoin(performed_user, performed_user.user_id == ranked_transactions.c.performed_by)
+                .where(
+                    AssetMaster.is_retired.is_(False),
+                    AssetMaster.asset_status == STATUS_ASSIGNED,
+                    ranked_transactions.c.rn == 1,
+                    ranked_transactions.c.to_assignee == user_id,
+                )
+                .order_by(ranked_transactions.c.action_date.desc(), AssetMaster.asset_name.asc())
+            ).all()
+
+            payload: list[dict[str, Any]] = []
+            for asset, assigned_on, assignment_type, remarks, from_employee_name, performed_by_name in rows:
+                item = model_to_dict(asset)
+                item["assigned_on"] = assigned_on
+                item["assignment_type"] = assignment_type
+                item["remarks"] = remarks
+                item["from_employee_name"] = from_employee_name
+                item["performed_by_name"] = performed_by_name
+                payload.append(item)
+            return payload
+
+    def return_assets_from_user(self, user_id: int, modified_by: int) -> list[int]:
+        """Mark assets as Available when they are currently assigned to the given user.
+
+        This updates asset_master.asset_status; it does not create a new transaction row
+        because the transaction schema currently requires a non-null assignee.
+        """
+
+        with session_scope() as session:
+            ranked_transactions = (
+                select(
+                    AssetTransaction.asset_id,
+                    AssetTransaction.to_assignee,
+                    func.row_number()
+                    .over(
+                        partition_by=AssetTransaction.asset_id,
+                        order_by=(AssetTransaction.action_date.desc(), AssetTransaction.transaction_id.desc()),
+                    )
+                    .label("rn"),
+                )
+                .subquery()
+            )
+
+            asset_ids = [
+                row[0]
+                for row in session.execute(
+                    select(AssetMaster.asset_id)
+                    .join(ranked_transactions, ranked_transactions.c.asset_id == AssetMaster.asset_id)
+                    .where(
+                        AssetMaster.is_retired.is_(False),
+                        AssetMaster.asset_status == STATUS_ASSIGNED,
+                        ranked_transactions.c.rn == 1,
+                        ranked_transactions.c.to_assignee == user_id,
+                    )
+                ).all()
+            ]
+
+            updated_ids: list[int] = []
+            for asset_id in asset_ids:
+                asset = session.get(AssetMaster, asset_id)
+                if not asset:
+                    continue
+                asset.asset_status = STATUS_AVAILABLE
+                asset.modified_by = modified_by
+                updated_ids.append(int(asset_id))
+
+            return updated_ids

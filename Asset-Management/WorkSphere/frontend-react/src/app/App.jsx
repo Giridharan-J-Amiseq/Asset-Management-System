@@ -11,6 +11,7 @@ import { AssignPage } from "../pages/AssignPage";
 import { TransferPage } from "../pages/TransferPage";
 import { MaintenancePage } from "../pages/MaintenancePage";
 import { UsersPage } from "../pages/UsersPage";
+import { UserDetailPage } from "../pages/UserDetailPage";
 import { QrPrintPage } from "../pages/QrPrintPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 
@@ -41,6 +42,7 @@ export default function App() {
       <Route path="/transfer" element={<ProtectedRoute pathname="/transfer"><TransferPage /></ProtectedRoute>} />
       <Route path="/maintenance" element={<ProtectedRoute pathname="/maintenance"><MaintenancePage /></ProtectedRoute>} />
       <Route path="/users" element={<ProtectedRoute pathname="/users"><UsersPage /></ProtectedRoute>} />
+      <Route path="/users/:userId" element={<ProtectedRoute pathname="/users/:id"><UserDetailPage /></ProtectedRoute>} />
       <Route path="/qr-print" element={<ProtectedRoute pathname="/qr-print"><QrPrintPage /></ProtectedRoute>} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

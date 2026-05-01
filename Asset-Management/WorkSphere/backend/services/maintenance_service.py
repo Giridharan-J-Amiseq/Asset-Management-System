@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from repositories.asset_repository import AssetRepository
+from repositories.activity_repository import ActivityRepository
 from repositories.maintenance_repository import MaintenanceRepository
 from schemas import MaintenanceCreate, MaintenanceUpdate
 
@@ -19,6 +20,7 @@ class MaintenanceService:
 
         self.maintenance_repository = maintenance_repository or MaintenanceRepository()
         self.asset_repository = asset_repository or AssetRepository()
+        self.activity_repository = ActivityRepository()
 
     def list_maintenance(self) -> list[dict[str, Any]]:
         """Return all maintenance records."""
@@ -39,6 +41,13 @@ class MaintenanceService:
         if not self.asset_repository.find_by_id(payload.asset_id):
             raise HTTPException(status_code=404, detail="Asset not found")
         self.maintenance_repository.create_maintenance(payload, current_user["user_id"])
+        self.activity_repository.create_log(
+            entity_type="asset",
+            entity_id=payload.asset_id,
+            action="maintenance_logged",
+            performed_by=current_user.get("user_id"),
+            details={"issue_type": payload.issue_type},
+        )
         return {"message": "Maintenance issue logged successfully"}
 
     def update_maintenance(self, maintenance_id: int, payload: MaintenanceUpdate) -> dict[str, str]:
@@ -56,4 +65,11 @@ class MaintenanceService:
 
         record = self.get_maintenance_or_404(maintenance_id)
         self.maintenance_repository.close_maintenance(maintenance_id, record["asset_id"], current_user["user_id"])
+        self.activity_repository.create_log(
+            entity_type="asset",
+            entity_id=record["asset_id"],
+            action="maintenance_closed",
+            performed_by=current_user.get("user_id"),
+            details={"maintenance_id": maintenance_id},
+        )
         return {"message": "Maintenance closed and asset marked available"}

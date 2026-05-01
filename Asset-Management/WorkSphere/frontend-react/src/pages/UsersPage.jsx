@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../services/api";
 import { userRoles } from "../app/routeConfig";
@@ -16,6 +17,7 @@ export function UsersPage() {
   const [form, setForm] = useState(emptyForm);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const loadUsers = async () => {
     const response = await api.get("/users");
@@ -25,6 +27,24 @@ export function UsersPage() {
   useEffect(() => {
     loadUsers().catch((requestError) => setError(requestError.message));
   }, []);
+
+  const syncMicrosoftUsers = async () => {
+    setError("");
+    setMessage("");
+    setIsSyncing(true);
+
+    try {
+      const result = await api.post("/auth/microsoft/import-users?top=200", {});
+      const imported = result?.imported ?? 0;
+      const skipped = result?.skipped ?? 0;
+      setMessage(`Microsoft import complete. Imported ${imported}, skipped ${skipped}.`);
+      await loadUsers();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -69,9 +89,22 @@ export function UsersPage() {
         </Card>
 
         <Card title="User directory" subtitle="Active and inactive accounts.">
+          <div className="mb-4 flex justify-end">
+            <Button type="button" onClick={syncMicrosoftUsers} disabled={isSyncing}>
+              {isSyncing ? "Syncing..." : "Sync from Microsoft"}
+            </Button>
+          </div>
           <DataTable
             columns={[
-              { key: "user_name", label: "Name" },
+              {
+                key: "user_name",
+                label: "Name",
+                render: (row) => (
+                  <Link className="font-medium text-slate-900 hover:underline" to={`/users/${row.user_id}`}>
+                    {row.user_name}
+                  </Link>
+                ),
+              },
               { key: "username", label: "Username" },
               { key: "role", label: "Role" },
               { key: "is_active", label: "Status", render: (row) => (row.is_active ? "Active" : "Inactive") },
@@ -80,7 +113,7 @@ export function UsersPage() {
                 label: "Action",
                 render: (row) => (
                   row.is_active ? (
-                    <ConfirmButton confirmText="Deactivate this user?" danger onConfirm={() => deactivateUser(row.user_id)}>
+                    <ConfirmButton confirmText="Deactivate this user and return assigned assets to Available?" danger onConfirm={() => deactivateUser(row.user_id)}>
                       Deactivate
                     </ConfirmButton>
                   ) : (

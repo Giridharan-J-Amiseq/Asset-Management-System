@@ -24,6 +24,7 @@ class AssetController:
         self.router.add_api_route("/{asset_id}", self.get_asset, methods=["GET"])
         self.router.add_api_route("", self.create_asset, methods=["POST"], status_code=status.HTTP_201_CREATED)
         self.router.add_api_route("/{asset_id}", self.update_asset, methods=["PUT"])
+        self.router.add_api_route("/{asset_id}/available", self.mark_available, methods=["PATCH"], response_model=ApiMessage)
         self.router.add_api_route("/{asset_id}/retire", self.retire_asset, methods=["PATCH"], response_model=ApiMessage)
         self.router.add_api_route("/{asset_id}/qr", self.generate_qr, methods=["POST"])
 
@@ -60,6 +61,11 @@ class AssetController:
         """Update editable asset fields."""
 
         return self.service.update_asset(asset_id, payload, current_user)
+
+    def mark_available(self, asset_id: str, current_user: dict = Depends(require_roles(*EDITOR_ROLES))):
+        """Return an asset to Available status."""
+
+        return self.service.mark_available(asset_id, current_user)
 
     def retire_asset(self, asset_id: str, current_user: dict = Depends(require_roles(ADMIN_ROLE))):
         """Retire an asset so it no longer appears in the active inventory."""

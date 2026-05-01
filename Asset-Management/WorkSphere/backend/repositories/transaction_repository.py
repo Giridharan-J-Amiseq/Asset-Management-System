@@ -60,6 +60,60 @@ class TransactionRepository:
                 payload.append(item)
             return payload
 
+    def list_transactions_for_user(self, user_id: int) -> list[dict[str, Any]]:
+        """Return movement records where the user is sender or recipient."""
+
+        with session_scope() as session:
+            from_name = (
+                select(User.user_name)
+                .where(User.user_id == AssetTransaction.from_employee)
+                .correlate(AssetTransaction)
+                .scalar_subquery()
+            )
+            to_name = (
+                select(User.user_name)
+                .where(User.user_id == AssetTransaction.to_assignee)
+                .correlate(AssetTransaction)
+                .scalar_subquery()
+            )
+            performed_name = (
+                select(User.user_name)
+                .where(User.user_id == AssetTransaction.performed_by)
+                .correlate(AssetTransaction)
+                .scalar_subquery()
+            )
+
+            rows = session.execute(
+                select(
+                    AssetTransaction,
+                    AssetMaster.asset_name,
+                    AssetMaster.serial_number,
+                    AssetMaster.asset_code,
+                    from_name.label("from_employee_name"),
+                    to_name.label("to_assignee_name"),
+                    performed_name.label("performed_by_name"),
+                )
+                .join(AssetMaster, AssetMaster.asset_id == AssetTransaction.asset_id)
+                .where(
+                    (AssetTransaction.from_employee == user_id)
+                    | (AssetTransaction.to_assignee == user_id)
+                    | (AssetTransaction.performed_by == user_id)
+                )
+                .order_by(AssetTransaction.action_date.desc(), AssetTransaction.transaction_id.desc())
+            ).all()
+
+            payload: list[dict[str, Any]] = []
+            for tx, asset_name, serial_number, asset_code, from_employee_name, to_assignee_name, performed_by_name in rows:
+                item = model_to_dict(tx)
+                item["asset_name"] = asset_name
+                item["serial_number"] = serial_number
+                item["asset_code"] = asset_code
+                item["from_employee_name"] = from_employee_name
+                item["to_assignee_name"] = to_assignee_name
+                item["performed_by_name"] = performed_by_name
+                payload.append(item)
+            return payload
+
     def latest_assignee(self, asset_id: int) -> dict[str, Any] | None:
         """Return the last assignee recorded for an asset."""
 

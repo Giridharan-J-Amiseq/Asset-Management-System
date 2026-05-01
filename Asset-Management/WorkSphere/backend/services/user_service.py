@@ -6,6 +6,9 @@ from fastapi import HTTPException
 
 from auth import hash_password
 from constants import VIEWER_ROLE
+from services.asset_service import AssetService
+from repositories.activity_repository import ActivityRepository
+from repositories.transaction_repository import TransactionRepository
 from repositories.user_repository import UserRepository
 from schemas import UserCreate, UserUpdate
 
@@ -13,10 +16,19 @@ from schemas import UserCreate, UserUpdate
 class UserService:
     """Coordinates user account business rules."""
 
-    def __init__(self, repository: UserRepository | None = None):
-        """Wire the service to the user repository."""
+    def __init__(
+        self,
+        repository: UserRepository | None = None,
+        asset_service: AssetService | None = None,
+        transaction_repository: TransactionRepository | None = None,
+        activity_repository: ActivityRepository | None = None,
+    ):
+        """Wire the service to its repositories/services."""
 
         self.repository = repository or UserRepository()
+        self.asset_service = asset_service or AssetService()
+        self.transaction_repository = transaction_repository or TransactionRepository()
+        self.activity_repository = activity_repository or ActivityRepository()
 
     def list_assignable_users(self) -> list[dict[str, Any]]:
         """Return active users who can receive assets."""
@@ -27,6 +39,18 @@ class UserService:
         """Return all users for the admin directory."""
 
         return self.repository.list_users()
+
+    def get_user_detail(self, user_id: int) -> dict[str, Any]:
+        """Return the user record and assets currently assigned to the user."""
+
+        user = self.repository.find_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        assets = self.asset_service.list_assets_assigned_to_user(user_id)
+        transactions = self.transaction_repository.list_transactions_for_user(user_id)
+        activity = self.activity_repository.list_logs(entity_type="user", entity_id=user_id, limit=200)
+        return {"user": user, "assets": assets, "transactions": transactions, "activity": activity}
 
     def create_user(self, payload: UserCreate) -> dict[str, Any]:
         """Create a user after enforcing unique username and email."""
@@ -89,10 +113,26 @@ class UserService:
         self.repository.update_user_fields(user_id, data)
         return {"message": "User updated successfully"}
 
-    def deactivate_user(self, user_id: int) -> dict[str, str]:
-        """Deactivate a user after verifying the account exists."""
+    def deactivate_user(self, user_id: int, current_user_id: int) -> dict[str, Any]:
+        """Deactivate a user and return their assigned assets back to Available."""
 
         if not self.repository.find_by_id(user_id):
             raise HTTPException(status_code=404, detail="User not found")
         self.repository.deactivate_user(user_id)
-        return {"message": "User deactivated successfully"}
+        returned_asset_ids = self.asset_service.return_assets_from_user(user_id, current_user_id)
+        self.activity_repository.create_log(
+            entity_type="user",
+            entity_id=user_id,
+            action="user_deactivated",
+            performed_by=current_user_id,
+            details={"assets_returned": len(returned_asset_ids)},
+        )
+        for asset_id in returned_asset_ids:
+            self.activity_repository.create_log(
+                entity_type="asset",
+                entity_id=asset_id,
+                action="asset_returned_from_user",
+                performed_by=current_user_id,
+                details={"from_user_id": user_id, "to_status": "Available"},
+            )
+        return {"message": "User deactivated successfully", "assets_returned": len(returned_asset_ids)}

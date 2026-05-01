@@ -94,3 +94,15 @@ class Maintenance(Base):
     resolution_notes: Mapped[str | None] = mapped_column(Text)
     created_on: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     modified_on: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ActivityLog(Base):
+    __tablename__ = "activity_log"
+
+    log_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    details: Mapped[str | None] = mapped_column(Text)
+    performed_by: Mapped[int | None] = mapped_column(ForeignKey("users.user_id"))
+    created_on: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

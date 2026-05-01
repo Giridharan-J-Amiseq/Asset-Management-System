@@ -115,6 +115,16 @@ CREATE TABLE IF NOT EXISTS alerts (
     created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS activity_log (
+    log_id SERIAL PRIMARY KEY,
+    entity_type VARCHAR(30) NOT NULL,
+    entity_id INT NOT NULL,
+    action VARCHAR(80) NOT NULL,
+    details TEXT,
+    performed_by INT NULL REFERENCES users(user_id),
+    created_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE OR REPLACE FUNCTION set_modified_on()
 RETURNS TRIGGER AS $$
 BEGIN

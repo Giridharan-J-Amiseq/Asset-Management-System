@@ -284,46 +284,73 @@ class WorkSphereApplication:
         _: dict = Depends(require_roles("Admin")),
         top: int = Query(50, ge=1, le=200),
     ) -> dict:
-        """Import employees from Microsoft Graph into the local users table as Viewer users."""
+        """Import employees from Microsoft Graph into the local users table as Viewer users.
+
+        Microsoft Graph paginates results; this endpoint follows `@odata.nextLink`
+        until all pages are processed.
+        """
 
         token = await self._graph_app_token()
-        url = "https://graph.microsoft.com/v1.0/users"
-        params = {
+        headers = {"Authorization": f"Bearer {token}"}
+
+        next_url: str | None = "https://graph.microsoft.com/v1.0/users"
+        next_params: dict | None = {
             "$select": "displayName,mail,userPrincipalName",
             "$top": str(top),
         }
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
-
-        if response.status_code == 403:
-            raise HTTPException(
-                status_code=403,
-                detail="Microsoft Graph denied access. Ensure your Azure app has User.Read.All (Application) and admin consent.",
-            )
-        if response.status_code >= 400:
-            raise HTTPException(status_code=400, detail="Failed to fetch employees from Microsoft Graph")
-
-        payload = response.json()
         user_service = UserService()
         created = 0
         skipped = 0
-        for item in payload.get("value", []) or []:
-            email = item.get("mail") or item.get("userPrincipalName")
-            if not email:
-                skipped += 1
-                continue
-            before = user_service.repository.find_by_email(email.strip().lower())
-            user_service.ensure_microsoft_user(email=email, display_name=item.get("displayName"))
-            after = user_service.repository.find_by_email(email.strip().lower())
-            if before:
-                skipped += 1
-            elif after:
-                created += 1
-            else:
-                skipped += 1
+        fetched = 0
+        pages = 0
 
-        return {"imported": created, "skipped": skipped, "requested": top}
+        async with httpx.AsyncClient(timeout=30) as client:
+            while next_url:
+                response = await client.get(next_url, headers=headers, params=next_params)
+                pages += 1
+
+                if response.status_code == 403:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Microsoft Graph denied access. Ensure your Azure app has User.Read.All (Application) and admin consent.",
+                    )
+                if response.status_code >= 400:
+                    raise HTTPException(status_code=400, detail="Failed to fetch employees from Microsoft Graph")
+
+                payload = response.json() or {}
+                items = payload.get("value", []) or []
+                fetched += len(items)
+
+                for item in items:
+                    email = item.get("mail") or item.get("userPrincipalName")
+                    if not email:
+                        skipped += 1
+                        continue
+
+                    email_value = email.strip().lower()
+                    existing = user_service.repository.find_by_email(email_value)
+                    if existing:
+                        skipped += 1
+                        continue
+
+                    try:
+                        user_service.ensure_microsoft_user(email=email_value, display_name=item.get("displayName"))
+                        created += 1
+                    except HTTPException:
+                        # Don't fail the entire import if one user record can't be created.
+                        skipped += 1
+
+                next_url = payload.get("@odata.nextLink")
+                next_params = None  # nextLink already contains query params
+
+        return {
+            "imported": created,
+            "skipped": skipped,
+            "requested": top,
+            "fetched": fetched,
+            "pages": pages,
+        }
 
 
 app = WorkSphereApplication().app

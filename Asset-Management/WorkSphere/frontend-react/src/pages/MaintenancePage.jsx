@@ -99,6 +99,7 @@ export function MaintenancePage() {
             columns={[
               { key: "asset_name", label: "Asset" },
               { key: "issue_type", label: "Issue" },
+              { key: "asset_status", label: "Asset status", badge: true },
               { key: "maintenance_status", label: "Status", render: (row) => <Badge tone={row.maintenance_status}>{row.maintenance_status}</Badge> },
               { key: "created_on", label: "Created", render: (row) => formatDateTime(row.created_on) },
               {
